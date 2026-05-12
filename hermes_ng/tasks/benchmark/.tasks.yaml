@@ -1,0 +1,66 @@
+# 代码仓库级任务
+- id: "repo_code_task"
+  name: "代码仓库级理解与构建"
+  description: >
+    Bash 环境: git clone + 理解 README 指引 + 执行镜像构建 + 单元测试通过
+  category: "benchmark"
+  max_steps: 30
+  eval_criteria:
+    - type: "git_clone_success"
+    - type: "readme_understood"
+      must_cover: ["build", "test", "dependencies"]
+    - type: "build_success"
+    - type: "test_passed"
+      min_pass_rate: 0.9
+  reward_spec:
+    success: 2.0
+    partial: 0.5
+    failure: -1.0
+
+# 长流程金融分析
+- id: "financial_analysis_long"
+  name: "长流程金融分析"
+  description: >
+    抓取 CSV 财报数据 → 数据清洗 → 多维分析 → 生成可视化图表
+  category: "benchmark"
+  max_steps: 25
+  eval_criteria:
+    - type: "data_loaded"
+      format: "csv"
+    - type: "data_cleaned"
+      must_handle: ["missing_values", "outliers"]
+    - type: "multi_dim_analysis"
+      min_dimensions: 3
+    - type: "visualization_generated"
+      format: "png_or_html"
+  reward_spec:
+    success: 2.0
+    partial: 0.6
+    failure: -1.0
+
+# 多 Agent 协作任务
+- id: "multi_agent_collaboration"
+  name: "多 Agent 协作任务"
+  description: >
+    一个 Agent 作为 "研究员" 获取信息，另一个作为 "writer" 生成最终报告。
+    两者需要有效沟通和交接。
+  category: "benchmark"
+  max_steps: 40
+  agents:
+    - role: "researcher"
+      tools: ["web_search", "file_read", "memory_write"]
+    - role: "writer"
+      tools: ["memory_read", "file_write"]
+  eval_criteria:
+    - type: "information_gathered"
+      min_sources: 3
+    - type: "effective_handoff"
+      info_passed: true
+    - type: "report_generated"
+      min_length: 500
+    - type: "report_quality"
+      must_include: ["findings", "conclusion"]
+  reward_spec:
+    success: 3.0
+    partial: 1.0
+    failure: -1.5

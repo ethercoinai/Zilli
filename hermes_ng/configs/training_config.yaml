@@ -1,0 +1,26 @@
+training:
+  framework: "slime + Miles"
+  inference_engine: "SGLang"
+  training_engine: "Megatron-LM"
+  algorithm: "CISPO"
+  cluster:
+    train_gpus: 256
+    inference_gpus: 512
+    colocated: false
+
+  optimization:
+    on_policy_strictness: "bitwise"
+    context_window_limit: 32768
+    off_policy_ratio_limit: 0.15
+
+  model:
+    type: "mixtral_moe"
+    hidden_size: 4096
+    num_layers: 32
+    num_experts: 8
+    top_k: 2
+
+  checkpoint:
+    dir: "./checkpoints"
+    interval_steps: 100
+    keep_last_n: 5

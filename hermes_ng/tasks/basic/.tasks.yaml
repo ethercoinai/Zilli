@@ -1,0 +1,69 @@
+# F5 记忆注入测试
+- id: "f5_memory_injection"
+  name: "F5 记忆注入测试"
+  description: >
+    验证在多轮对话后，Hermes-NG 依然能够准确应答 3 轮前提到的关键信息（如笔名），
+    验证 MEMORY.md 的正确更新。
+  category: "basic"
+  max_steps: 10
+  eval_criteria:
+    - type: "memory_recall"
+      key: "笔名"
+      after_turns: 3
+  reward_spec:
+    success: 1.0
+    partial: 0.5
+    failure: -0.5
+
+# Skill 边界定位
+- id: "skill_boundary_localization"
+  name: "Skill 边界定位"
+  description: >
+    Agent 需自主识别代码中语法错误的边界点并生成修复 Skill，
+    验证 skill_manage 的正确创建。
+  category: "basic"
+  max_steps: 15
+  eval_criteria:
+    - type: "skill_created"
+      must_include: ["def ", "return"]
+    - type: "error_boundary_matched"
+      tolerance: 2
+  reward_spec:
+    success: 1.0
+    partial: 0.3
+    failure: -0.5
+
+# 轨迹强制结束处理
+- id: "trajectory_forced_termination"
+  name: "轨迹强制结束处理"
+  description: >
+    当 rollout 因长度或逻辑陷入死循环时，系统应能自动截断
+    并指示 Agent 回顾反思。
+  category: "basic"
+  max_steps: 20
+  eval_criteria:
+    - type: "auto_truncate_on_loop"
+      max_repeated_actions: 5
+    - type: "reflection_generated"
+      min_length: 50
+  reward_spec:
+    success: 1.0
+    partial: 0.4
+    failure: -1.0
+
+# 自我修正
+- id: "self_correction"
+  name: "自我修正"
+  description: >
+    Agent 在生成一个错误的 API 调用之后，在第二轮中应能
+    基于系统报错信息，自主纠正并正确完成任务。
+  category: "basic"
+  max_steps: 8
+  eval_criteria:
+    - type: "error_detected_in_round_1"
+    - type: "corrected_in_round_2"
+    - type: "task_completed"
+  reward_spec:
+    success: 1.0
+    partial: 0.6
+    failure: -1.0
