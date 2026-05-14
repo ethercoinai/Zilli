@@ -1,5 +1,6 @@
 import asyncio
 import time
+import uuid
 from typing import List, Any, Callable, Dict, Optional
 from dataclasses import dataclass, field
 
@@ -29,7 +30,7 @@ class AsyncRolloutScheduler:
         batch_start = time.time()
 
         async def run_single(task) -> RolloutResult:
-            task_id = str(id(task))
+            task_id = str(uuid.uuid4())
             try:
                 result = await asyncio.wait_for(
                     rollout_fn(task), timeout=timeout_per_task
@@ -75,14 +76,17 @@ class AsyncRolloutScheduler:
                 pass
 
         for fut in pending_futures:
-            fut.cancel()
-            results.append(RolloutResult(
-                task_id="cancelled",
-                trajectory=[],
-                reward=-1.0,
-                tokens=0,
-                completed=False,
-                error="window_closed",
-            ))
+            try:
+                result = await fut
+            except (asyncio.CancelledError, Exception):
+                result = RolloutResult(
+                    task_id=str(uuid.uuid4()),
+                    trajectory=[],
+                    reward=-1.0,
+                    tokens=0,
+                    completed=False,
+                    error="window_closed",
+                )
+            results.append(result)
 
         return results

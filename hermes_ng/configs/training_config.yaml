@@ -4,8 +4,8 @@ training:
   training_engine: "Megatron-LM"
   algorithm: "CISPO"
   cluster:
-    train_gpus: 256
-    inference_gpus: 512
+    train_gpus: 8
+    inference_gpus: 16
     colocated: false
 
   optimization:

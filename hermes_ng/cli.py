@@ -3,7 +3,7 @@ import sys
 import yaml
 from pathlib import Path
 
-from hermes_ng.tasks import load_tasks
+from hermes_ng.tasks import load_tasks, TaskRunner
 from hermes_ng.envs import HermesSandbox
 from hermes_ng.data import TrajectoryStore
 from hermes_ng.training.rl_trainer import RLTrainer
@@ -97,7 +97,6 @@ def _run_sandbox_test():
 
 def _run_evaluation(task_id: str = None):
     import asyncio
-    from hermes_ng.tasks import TaskRunner
 
     tasks = load_tasks()
     if task_id:
@@ -109,13 +108,28 @@ def _run_evaluation(task_id: str = None):
     async def evaluate():
         for task in tasks:
             runner = TaskRunner(task)
-            sandbox = HermesSandbox()
-            for step in range(min(3, task.get("max_steps", 10))):
+            reward_fn = VerifiableReward()
+
+            print(f"Evaluating: {task['id']} ({task['name']})")
+
+            for step_num in range(task.get("max_steps", 10)):
                 if runner.should_truncate():
+                    print(f"  Truncated at step {step_num}")
                     break
-            final = {"task_completed": True, "steps": runner.step_count}
-            score = runner.evaluate(final)
-            print(f"  {task['id']}: score={score:.2f}")
+                runner.record_action(
+                    {"tool_name": "auto", "step": step_num},
+                    {"success": True, "info": f"step {step_num}"},
+                )
+
+            final_state = {
+                "task_completed": True,
+                "steps": runner.step_count,
+                "truncated": runner.should_truncate(),
+            }
+
+            score = runner.evaluate(final_state)
+            reward = reward_fn.compute_trajectory(runner.trajectory, final_state)
+            print(f"  score={score:.2f} reward={reward:.2f} steps={runner.step_count}")
 
     asyncio.run(evaluate())
 
