@@ -3,20 +3,20 @@ import asyncio
 import yaml
 from pathlib import Path
 
-from hermes_ng.schema.actions import (
+from zilli.schema.actions import (
     BaseAction, MemoryWriteAction, MemoryReadAction,
     SkillCreateAction, BashRunAction, FileWriteAction, FinishAction,
 )
-from hermes_ng.envs import HermesSandbox
-from hermes_ng.data import TrajectoryStore
-from hermes_ng.tasks import load_tasks, TaskRunner
-from hermes_ng.training.cispo import CISPO_Trainer
-from hermes_ng.training.grpo import GRPO_Trainer
-from hermes_ng.training.rl_trainer import RLTrainer
-from hermes_ng.rewards import VerifiableReward
-from hermes_ng.infra import LengthElasticController
-from hermes_ng.evolution import SkillEvolutionEngine
-from hermes_ng.learner import ContinuousLearner
+from zilli.envs import HermesSandbox
+from zilli.data import TrajectoryStore
+from zilli.tasks import load_tasks, TaskRunner
+from zilli.training.cispo import CISPO_Trainer
+from zilli.training.grpo import GRPO_Trainer
+from zilli.training.rl_trainer import RLTrainer
+from zilli.rewards import VerifiableReward
+from zilli.infra import LengthElasticController
+from zilli.evolution import SkillEvolutionEngine
+from zilli.learner import ContinuousLearner
 
 
 class TestSchema:

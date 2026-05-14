@@ -1,4 +1,4 @@
-from hermes_ng.schema.actions import (
+from zilli.schema.actions import (
     BaseAction,
     MemoryWriteAction,
     MemoryReadAction,

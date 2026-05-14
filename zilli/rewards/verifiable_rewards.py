@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from hermes_ng.schema.actions import BaseAction
+from zilli.schema.actions import BaseAction
 
 
 class VerifiableReward:

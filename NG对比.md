@@ -1,6 +1,6 @@
-# hermes-ng vs hermes-web-ui 对比分析
+# zilli vs hermes-web-ui 对比分析
 
-| 维度 | **hermes-web-ui** (现有) | **hermes-ng** (本项目) |
+| 维度 | **hermes-web-ui** (现有) | **zilli** (本项目) |
 |------|------------------------|----------------------|
 | **定位** | Hermes Agent 的 Web 管理面板 | 下一代 Agent 自主开发/RL训练框架 |
 | **语言** | TypeScript 71% + Vue 26% + Python 2% | Python 100% |
@@ -14,9 +14,9 @@
 ## 关键差异
 
 1. **技术栈完全不同** — TS/JS 前端项目 vs Python 训练框架，无直接代码继承关系
-2. **抽象层级不同** — `hermes-web-ui` 是 Agent 的用户界面；`hermes-ng` 是 Agent 的训练工厂
-3. **数据流方向不同** — web-ui 消费 Agent 输出；hermes-ng 生产 Agent（通过 RL 训练）
-4. **可能的衔接点**：hermes-ng 训练的模型可部署到 Hermes Agent，通过 web-ui 展示；`ContinuousLearner` 的设计意图是从生产环境（含 web-ui 产生的交互数据）吸收轨迹反哺训练
+2. **抽象层级不同** — `hermes-web-ui` 是 Agent 的用户界面；`zilli` 是 Agent 的训练工厂
+3. **数据流方向不同** — web-ui 消费 Agent 输出；zilli 生产 Agent（通过 RL 训练）
+4. **可能的衔接点**：zilli 训练的模型可部署到 Hermes Agent，通过 web-ui 展示；`ContinuousLearner` 的设计意图是从生产环境（含 web-ui 产生的交互数据）吸收轨迹反哺训练
 
 ## 总结
 
@@ -27,7 +27,7 @@
                       │ 调用
                    Hermes Agent
                       ▲ 部署
-模型训练层  ──  hermes-ng (Python RL 框架)
+模型训练层  ──  zilli (Python RL 框架)
 ```
 
-web-ui 是 "用户与 Agent 交互的界面层"，hermes-ng 是 "构建 Agent 的训练基础设施层"。
+web-ui 是 "用户与 Agent 交互的界面层"，zilli 是 "构建 Agent 的训练基础设施层"。

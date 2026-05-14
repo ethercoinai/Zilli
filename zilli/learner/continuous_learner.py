@@ -3,10 +3,10 @@ import logging
 import json
 from pathlib import Path
 from typing import List, Dict
-from hermes_ng.data import TrajectoryStore
+from zilli.data import TrajectoryStore
 
 
-logger = logging.getLogger("hermes_ng.learner")
+logger = logging.getLogger("zilli.learner")
 
 
 class ContinuousLearner:

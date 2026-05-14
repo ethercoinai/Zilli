@@ -3,17 +3,17 @@ import sys
 import yaml
 from pathlib import Path
 
-from hermes_ng.tasks import load_tasks, TaskRunner
-from hermes_ng.envs import HermesSandbox
-from hermes_ng.data import TrajectoryStore
-from hermes_ng.training.rl_trainer import RLTrainer
-from hermes_ng.rewards import VerifiableReward
-from hermes_ng.version import version
+from zilli.tasks import load_tasks, TaskRunner
+from zilli.envs import HermesSandbox
+from zilli.data import TrajectoryStore
+from zilli.training.rl_trainer import RLTrainer
+from zilli.rewards import VerifiableReward
+from zilli.version import version
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Hermes-NG: 面向AI自主开发的Agent工具")
-    parser.add_argument("--version", action="version", version=f"hermes-ng v{version}")
+    parser = argparse.ArgumentParser(description="Zilli: 面向AI自主开发的Agent工具")
+    parser.add_argument("--version", action="version", version=f"zilli v{version}")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list-tasks", help="列出所有可用任务")
@@ -65,7 +65,7 @@ def _list_category(cat: str):
 
 def _run_sandbox_test():
     import asyncio
-    from hermes_ng.schema.actions import MemoryWriteAction, MemoryReadAction, FinishAction
+    from zilli.schema.actions import MemoryWriteAction, MemoryReadAction, FinishAction
 
     async def test():
         sandbox = HermesSandbox()

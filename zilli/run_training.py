@@ -2,12 +2,12 @@ import asyncio
 import yaml
 from pathlib import Path
 
-from hermes_ng.envs import HermesSandbox
-from hermes_ng.data import TrajectoryStore
-from hermes_ng.infra import LengthElasticController
-from hermes_ng.infra.async_scheduler import AsyncRolloutScheduler
-from hermes_ng.training.rl_trainer import RLTrainer
-from hermes_ng.tasks import load_tasks
+from zilli.envs import HermesSandbox
+from zilli.data import TrajectoryStore
+from zilli.infra import LengthElasticController
+from zilli.infra.async_scheduler import AsyncRolloutScheduler
+from zilli.training.rl_trainer import RLTrainer
+from zilli.tasks import load_tasks
 
 
 async def main():

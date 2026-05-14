@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
-from hermes_ng.training.cispo import CISPO_Trainer
-from hermes_ng.training.grpo import GRPO_Trainer
+from zilli.training.cispo import CISPO_Trainer
+from zilli.training.grpo import GRPO_Trainer
 
 
 class RLTrainer:
