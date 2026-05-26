@@ -1,0 +1,47 @@
+- id: "multi_agent_collaboration"
+  name: "多 Agent 协作任务"
+  description: >
+    一个 Agent 作为 "研究员" 获取信息，另一个作为 "writer" 生成最终报告。
+    两者需要有效沟通和交接。
+  category: "benchmark"
+  max_steps: 40
+  trajectory_template:
+    - tool: "memory_write"
+      description: "研究员写入研究发现"
+      expected_keywords: ["research", "findings"]
+      reward_weight: 1.0
+    - tool: "memory_read"
+      description: "writer 读取研究结果"
+      reward_weight: 1.0
+    - tool: "file_write"
+      description: "writer 生成最终报告"
+      expected_keywords: ["report", "findings", "conclusion"]
+      reward_weight: 2.0
+    - tool: "finish"
+      description: "writer 总结协作过程"
+      reward_weight: 1.0
+  agents:
+    - role: "researcher"
+      tools: ["web_search", "file_read", "memory_write"]
+    - role: "writer"
+      tools: ["memory_read", "file_write"]
+  eval_criteria:
+    - type: "information_gathered"
+      min_sources: 3
+    - type: "effective_handoff"
+      info_passed: true
+    - type: "report_generated"
+      min_length: 500
+    - type: "report_quality"
+      must_include: ["findings", "conclusion"]
+  reward_rules:
+    - type: "task_completion"
+      weight: 3.0
+    - type: "format"
+      weight: 1.5
+    - type: "tool_accuracy"
+      weight: 1.5
+  reward_spec:
+    success: 3.0
+    partial: 1.0
+    failure: -1.5

@@ -1,0 +1,34 @@
+- id: "trajectory_forced_termination"
+  name: "轨迹强制结束处理"
+  description: >
+    当 rollout 因长度或逻辑陷入死循环时，系统应能自动截断
+    并指示 Agent 回顾反思。
+  category: "basic"
+  max_steps: 20
+  trajectory_template:
+    - tool: "bash_run"
+      description: "执行可能导致死循环的命令"
+      reward_weight: 0.5
+    - tool: "memory_write"
+      description: "记录反思内容"
+      expected_keywords: ["反思", "reflection"]
+      reward_weight: 2.0
+    - tool: "finish"
+      description: "截断后总结"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "auto_truncate_on_loop"
+      max_repeated_actions: 5
+    - type: "reflection_generated"
+      min_length: 50
+  reward_rules:
+    - type: "task_completion"
+      weight: 1.5
+    - type: "safety"
+      weight: 2.0
+    - type: "efficiency"
+      weight: 1.0
+  reward_spec:
+    success: 1.0
+    partial: 0.4
+    failure: -1.0

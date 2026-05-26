@@ -1,0 +1,37 @@
+- id: "skill_boundary_localization"
+  name: "Skill 边界定位"
+  description: >
+    Agent 需自主识别代码中语法错误的边界点并生成修复 Skill，
+    验证 skill_create 的正确边界定位。
+  category: "basic"
+  max_steps: 15
+  trajectory_template:
+    - tool: "file_read"
+      description: "读取有语法错误的代码文件"
+      reward_weight: 1.0
+    - tool: "skill_create"
+      description: "创建修复 Skill，包含 def 和 return"
+      expected_keywords: ["def ", "return"]
+      reward_weight: 2.0
+    - tool: "skill_update"
+      description: "进一步优化 Skill 代码"
+      reward_weight: 1.0
+    - tool: "finish"
+      description: "完成任务并总结"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "skill_created"
+      must_include: ["def ", "return"]
+    - type: "error_boundary_matched"
+      tolerance: 2
+  reward_rules:
+    - type: "task_completion"
+      weight: 2.0
+    - type: "format"
+      weight: 1.0
+    - type: "tool_accuracy"
+      weight: 1.5
+  reward_spec:
+    success: 1.0
+    partial: 0.3
+    failure: -0.5

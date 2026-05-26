@@ -1,0 +1,84 @@
+- id: "financial_analysis_long"
+  name: "长流程金融分析"
+  description: >
+    抓取 CSV 财报数据 → 数据清洗 → 多维分析 → 生成可视化图表
+  category: "benchmark"
+  max_steps: 25
+  trajectory_template:
+    - tool: "file_read"
+      description: "读取 CSV 财报数据"
+      expected_keywords: ["csv"]
+      reward_weight: 1.0
+    - tool: "bash_run"
+      description: "运行数据分析脚本"
+      expected_keywords: ["pandas", "numpy", "python"]
+      reward_weight: 2.0
+    - tool: "file_write"
+      description: "生成可视化图表"
+      expected_keywords: ["plot", "chart", "png"]
+      reward_weight: 2.0
+    - tool: "finish"
+      description: "总结分析结论"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "data_loaded"
+      format: "csv"
+    - type: "data_cleaned"
+      must_handle: ["missing_values", "outliers"]
+    - type: "multi_dim_analysis"
+      min_dimensions: 3
+    - type: "visualization_generated"
+      format: "png_or_html"
+  reward_rules:
+    - type: "task_completion"
+      weight: 3.0
+    - type: "format"
+      weight: 1.0
+    - type: "tool_accuracy"
+      weight: 1.5
+  reward_spec:
+    success: 2.0
+    partial: 0.6
+    failure: -1.0
+
+- id: "data_pipeline_etl"
+  name: "数据管道 ETL"
+  description: >
+    从多个异构数据源提取数据，执行清洗和转换，
+    加载到统一结构中，验证数据一致性。
+  category: "benchmark"
+  max_steps: 20
+  trajectory_template:
+    - tool: "file_read"
+      description: "读取第一个数据源"
+      reward_weight: 1.0
+    - tool: "file_read"
+      description: "读取第二个数据源"
+      reward_weight: 1.0
+    - tool: "bash_run"
+      description: "执行 ETL 转换脚本"
+      expected_keywords: ["transform", "clean", "merge"]
+      reward_weight: 2.0
+    - tool: "file_write"
+      description: "写入统一输出"
+      reward_weight: 1.0
+    - tool: "finish"
+      description: "总结 ETL 流程"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "data_extracted"
+      min_sources: 2
+    - type: "data_transformed"
+    - type: "output_written"
+    - type: "consistency_verified"
+  reward_rules:
+    - type: "task_completion"
+      weight: 2.0
+    - type: "efficiency"
+      weight: 1.5
+    - type: "safety"
+      weight: 1.0
+  reward_spec:
+    success: 2.0
+    partial: 0.5
+    failure: -1.0

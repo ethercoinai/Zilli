@@ -1,0 +1,36 @@
+- id: "self_correction"
+  name: "自我修正"
+  description: >
+    Agent 在生成一个错误的 API 调用之后，在第二轮中应能
+    基于系统报错信息，自主纠正并正确完成任务。
+  category: "basic"
+  max_steps: 8
+  trajectory_template:
+    - tool: "bash_run"
+      description: "第一次执行（预期会失败）"
+      expected_keywords: ["error"]
+      reward_weight: 0.5
+    - tool: "bash_run"
+      description: "第二次执行（修正后应成功）"
+      reward_weight: 2.0
+    - tool: "file_write"
+      description: "写入修正后的输出"
+      reward_weight: 1.0
+    - tool: "finish"
+      description: "总结修正过程"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "error_detected_in_round_1"
+    - type: "corrected_in_round_2"
+    - type: "task_completed"
+  reward_rules:
+    - type: "task_completion"
+      weight: 2.0
+    - type: "tool_accuracy"
+      weight: 1.5
+    - type: "efficiency"
+      weight: 1.0
+  reward_spec:
+    success: 1.0
+    partial: 0.6
+    failure: -1.0

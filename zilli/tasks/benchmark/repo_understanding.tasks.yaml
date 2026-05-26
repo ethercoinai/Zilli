@@ -1,0 +1,90 @@
+- id: "repo_code_task"
+  name: "代码仓库级理解与构建"
+  description: >
+    Bash 环境: git clone + 理解 README 指引 + 执行镜像构建 + 单元测试通过
+  category: "benchmark"
+  max_steps: 30
+  trajectory_template:
+    - tool: "bash_run"
+      description: "git clone 仓库"
+      expected_keywords: ["git clone"]
+      reward_weight: 1.0
+    - tool: "file_read"
+      description: "读取 README 理解构建指引"
+      expected_keywords: ["README"]
+      reward_weight: 1.0
+    - tool: "bash_run"
+      description: "执行构建命令"
+      expected_keywords: ["build", "make", "npm"]
+      reward_weight: 2.0
+    - tool: "bash_run"
+      description: "运行单元测试"
+      expected_keywords: ["test", "pytest"]
+      reward_weight: 2.0
+    - tool: "finish"
+      description: "总结构建与测试结果"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "git_clone_success"
+    - type: "readme_understood"
+      must_cover: ["build", "test", "dependencies"]
+    - type: "build_success"
+    - type: "test_passed"
+      min_pass_rate: 0.9
+  reward_rules:
+    - type: "task_completion"
+      weight: 3.0
+    - type: "format"
+      weight: 1.0
+    - type: "efficiency"
+      weight: 1.5
+  reward_spec:
+    success: 2.0
+    partial: 0.5
+    failure: -1.0
+
+- id: "multi_file_refactor"
+  name: "多文件重构任务"
+  description: >
+    Agent 需理解一个多文件项目的结构，提取公共接口，
+    将重复代码重构为共享模块，并确保所有测试通过。
+  category: "benchmark"
+  max_steps: 25
+  trajectory_template:
+    - tool: "file_read"
+      description: "读取项目结构"
+      expected_keywords: ["import", "from"]
+      reward_weight: 1.0
+    - tool: "file_read"
+      description: "读取多个源文件"
+      reward_weight: 1.0
+    - tool: "file_write"
+      description: "创建新的共享模块"
+      reward_weight: 2.0
+    - tool: "file_write"
+      description: "更新现有文件引用新模块"
+      reward_weight: 2.0
+    - tool: "bash_run"
+      description: "运行测试确认重构无误"
+      expected_keywords: ["test", "pytest"]
+      reward_weight: 1.0
+    - tool: "finish"
+      description: "总结重构内容"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "structure_understood"
+    - type: "shared_module_created"
+    - type: "all_files_updated"
+    - type: "test_passed"
+      min_pass_rate: 1.0
+  reward_rules:
+    - type: "task_completion"
+      weight: 3.0
+    - type: "tool_accuracy"
+      weight: 2.0
+    - type: "efficiency"
+      weight: 1.0
+  reward_spec:
+    success: 2.0
+    partial: 0.5
+    failure: -1.0

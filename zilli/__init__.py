@@ -8,6 +8,9 @@ from zilli.schema.actions import (
     FileReadAction,
     FileWriteAction,
     FinishAction,
+    TrajectoryTemplateStep,
+    RewardRule,
+    TaskConfig,
 )
 
 __all__ = [
@@ -20,4 +23,7 @@ __all__ = [
     "FileReadAction",
     "FileWriteAction",
     "FinishAction",
+    "TrajectoryTemplateStep",
+    "RewardRule",
+    "TaskConfig",
 ]

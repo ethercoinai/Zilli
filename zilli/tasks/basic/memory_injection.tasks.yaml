@@ -1,0 +1,36 @@
+- id: "f5_memory_injection"
+  name: "F5 记忆注入测试"
+  description: >
+    验证在多轮对话后，Agent 依然能够准确应答 3 轮前提到的关键信息（如笔名），
+    验证 MEMORY.md 的正确更新。
+  category: "basic"
+  max_steps: 10
+  trajectory_template:
+    - tool: "memory_write"
+      description: "写入笔名到记忆"
+      reward_weight: 1.0
+    - tool: "memory_read"
+      description: "读取已写入的笔名"
+      expected_keywords: ["笔名", "name"]
+      reward_weight: 1.0
+    - tool: "finish"
+      description: "完成任务并总结"
+      reward_weight: 1.0
+  eval_criteria:
+    - type: "memory_recall"
+      key: "笔名"
+      after_turns: 3
+  reward_rules:
+    - type: "task_completion"
+      weight: 2.0
+      params: {}
+    - type: "format"
+      weight: 1.0
+      params: {}
+    - type: "safety"
+      weight: 1.0
+      params: {}
+  reward_spec:
+    success: 1.0
+    partial: 0.5
+    failure: -0.5

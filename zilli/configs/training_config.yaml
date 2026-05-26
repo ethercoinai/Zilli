@@ -3,6 +3,23 @@ training:
   inference_engine: "SGLang"
   training_engine: "Megatron-LM"
   algorithm: "CISPO"
+  num_epochs: 100
+  batch_size: 128
+  checkpoint_interval: 20
+  window_sec: 60
+  timeout_per_task: 300
+  max_retries: 2
+  log_dir: "./experiments"
+
+  store_config:
+    max_size: 10000
+    min_reward_for_golden: 0.8
+    max_reward_for_failure: 0.3
+    cleaner_config:
+      max_dedup_similarity: 0.85
+      max_anomaly_std: 2.0
+      min_trajectory_length: 2
+
   cluster:
     train_gpus: 8
     inference_gpus: 16
@@ -12,6 +29,12 @@ training:
     on_policy_strictness: "bitwise"
     context_window_limit: 32768
     off_policy_ratio_limit: 0.15
+    clip_range: 0.2
+    kl_penalty: 0.01
+    is_weight_cap: 5.0
+    gamma: 0.99
+    gae_lambda: 0.95
+    entropy_coef: 0.01
 
   model:
     type: "mixtral_moe"

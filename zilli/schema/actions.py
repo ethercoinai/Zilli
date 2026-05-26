@@ -1,14 +1,12 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any, Literal
 
 
 class BaseAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     action_id: str = Field(..., description="唯一动作标识符")
     reasoning: str = Field(..., description="执行此动作的思考路径")
     tool_name: str = Field(..., description="调用的工具名称")
-
-    class Config:
-        extra = "forbid"
 
 
 class MemoryWriteAction(BaseAction):
@@ -55,3 +53,56 @@ class FileWriteAction(BaseAction):
 class FinishAction(BaseAction):
     tool_name: str = "finish"
     summary: str = Field(..., description="任务完成总结")
+
+
+class TrajectoryTemplateStep(BaseModel):
+    tool: str = Field(..., description="预期调用的工具名称")
+    description: str = Field("", description="此步骤的说明")
+    expected_keywords: Optional[List[str]] = Field(None, description="动作中应包含的关键词")
+    reward_weight: float = Field(1.0, description="此步骤的奖励权重")
+
+
+class RewardRule(BaseModel):
+    type: Literal["format", "task_completion", "safety", "efficiency", "tool_accuracy"] = Field(...,
+        description="奖励规则类型")
+    weight: float = Field(1.0, description="规则权重")
+    params: Dict[str, Any] = Field(default_factory=dict, description="规则参数")
+
+
+class TaskConfig(BaseModel):
+    id: str = Field(..., description="任务唯一标识")
+    name: str = Field(..., description="任务名称")
+    description: str = Field("", description="任务描述")
+    category: Literal["basic", "benchmark"] = Field(..., description="任务类别")
+    max_steps: int = Field(20, description="最大步数", ge=1, le=100)
+    trajectory_template: List[TrajectoryTemplateStep] = Field(
+        default_factory=list, description="期望的轨迹模板"
+    )
+    eval_criteria: List[Dict[str, Any]] = Field(
+        default_factory=list, description="评估标准列表"
+    )
+    reward_rules: List[RewardRule] = Field(
+        default_factory=list, description="奖励规则列表"
+    )
+    reward_spec: Dict[str, float] = Field(
+        default_factory=lambda: {"success": 1.0, "partial": 0.5, "failure": -1.0},
+        description="奖励数值规格",
+    )
+    agents: Optional[List[Dict[str, Any]]] = Field(None, description="多Agent任务的角色定义")
+    initial_context: Optional[Dict[str, Any]] = Field(None, description="初始上下文")
+
+
+__all__ = [
+    "BaseAction",
+    "MemoryWriteAction",
+    "MemoryReadAction",
+    "SkillCreateAction",
+    "SkillUpdateAction",
+    "BashRunAction",
+    "FileReadAction",
+    "FileWriteAction",
+    "FinishAction",
+    "TrajectoryTemplateStep",
+    "RewardRule",
+    "TaskConfig",
+]

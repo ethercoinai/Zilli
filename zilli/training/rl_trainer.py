@@ -15,14 +15,11 @@ class RLTrainer:
             raise ValueError(f"Unknown algorithm: {algorithm}")
 
     def update(self, batch: List[Dict]) -> Dict[str, float]:
-        if hasattr(self.impl, "compute_advantages"):
-            if self.config.get("algorithm", "").upper() == "GRPO":
-                advantages = self.impl.compute_advantages(batch)
-            else:
-                rewards = [t.get("reward", 0.0) for t in batch]
-                dones = [t.get("done", False) for t in batch]
-                advantages = self.impl.compute_advantages(rewards, dones)
+        if self.config.get("algorithm", "").upper() == "GRPO":
+            advantages = self.impl.compute_advantages(batch)
         else:
-            advantages = [t.get("advantage", 0.0) for t in batch]
+            rewards = [t.get("reward", 0.0) for t in batch]
+            dones = [t.get("done", False) for t in batch]
+            advantages = self.impl.compute_advantages(rewards, dones)
 
         return self.impl.compute_loss(batch, advantages)

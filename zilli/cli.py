@@ -97,6 +97,8 @@ def _run_sandbox_test():
 
 def _run_evaluation(task_id: str = None):
     import asyncio
+    from zilli.envs import HermesSandbox
+    from zilli.schema.actions import MemoryWriteAction
 
     tasks = load_tasks()
     if task_id:
@@ -107,6 +109,7 @@ def _run_evaluation(task_id: str = None):
 
     async def evaluate():
         for task in tasks:
+            sandbox = HermesSandbox(scenario=task.get("initial_context"))
             runner = TaskRunner(task)
             reward_fn = VerifiableReward()
 
@@ -116,13 +119,16 @@ def _run_evaluation(task_id: str = None):
                 if runner.should_truncate():
                     print(f"  Truncated at step {step_num}")
                     break
-                runner.record_action(
-                    {"tool_name": "auto", "step": step_num},
-                    {"success": True, "info": f"step {step_num}"},
+                action = MemoryWriteAction(
+                    action_id=f"eval_{step_num}",
+                    reasoning=f"Step {step_num}",
+                    key=f"k_{step_num}", value=f"v_{step_num}",
                 )
+                result = await sandbox.step(action)
+                runner.record_action(action.model_dump(), result.get("observation", {}))
 
             final_state = {
-                "task_completed": True,
+                "task_completed": sandbox.context.get("finished", False),
                 "steps": runner.step_count,
                 "truncated": runner.should_truncate(),
             }
@@ -153,12 +159,31 @@ def _run_train(config_path: str = None):
     reward_fn = VerifiableReward()
     sandbox = HermesSandbox()
 
+    import numpy as np
+    dummy_golden = [
+        {"action": {"tool_name": "memory_write", "key": "x", "value": "1"},
+         "observation": {"success": True}, "reward": 1.0, "done": False,
+         "log_prob": np.random.normal(-1.0, 0.5), "old_log_prob": np.random.normal(-0.5, 0.5)},
+        {"action": {"tool_name": "memory_read", "key": "x"},
+         "observation": {"success": True, "value": "1"}, "reward": 1.0, "done": True,
+         "log_prob": np.random.normal(-1.0, 0.5), "old_log_prob": np.random.normal(-0.5, 0.5)},
+    ]
+    dummy_failure = [
+        {"action": {"tool_name": "bash_run", "command": "bad"},
+         "observation": {"error": "fail", "success": False}, "reward": -0.5, "done": True,
+         "log_prob": np.random.normal(-2.0, 0.5), "old_log_prob": np.random.normal(-1.0, 0.5)},
+    ]
+    for i in range(10):
+        store.add_trajectory(dummy_golden, 0.9 + i * 0.01)
+    for i in range(5):
+        store.add_trajectory(dummy_failure, 0.1)
+
     for epoch in range(3):
         sandbox.reset()
-        batch = store.sample_batch(batch_size=4) if store.golden_trajectories else []
+        batch = store.sample_batch(batch_size=4, golden_ratio=0.5)
         if batch:
             metrics = trainer.update(batch)
-            print(f"Epoch {epoch}: loss={metrics['loss']:.4f}")
+            print(f"Epoch {epoch}: loss={metrics['loss']:.4f} policy_loss={metrics['policy_loss']:.4f}")
         else:
             print(f"Epoch {epoch}: no data yet")
 
