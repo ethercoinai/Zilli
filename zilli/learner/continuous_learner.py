@@ -1,15 +1,14 @@
 import asyncio
-import logging
 import json
-import time
+import logging
 import shutil
-from pathlib import Path
-from typing import List, Dict, Optional, Callable
-from dataclasses import dataclass, field
+import time
 from collections import deque
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
 
 from zilli.data import TrajectoryStore
-
 
 logger = logging.getLogger("zilli.learner")
 

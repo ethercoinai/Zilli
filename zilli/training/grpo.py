@@ -1,8 +1,9 @@
+from typing import Dict, List
+
 import numpy as np
-from typing import List, Dict
 
 
-class GRPO_Trainer:
+class GRPO_Trainer:  # noqa: N801
     def __init__(self, config: Dict):
         self.config = config
         self.clip_range = config.get("clip_range", 0.2)

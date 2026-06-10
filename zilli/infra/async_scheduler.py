@@ -1,11 +1,10 @@
 import asyncio
+import logging
 import time
 import uuid
-import logging
-from typing import List, Any, Callable, Dict, Optional, Set
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
-
+from typing import Any, Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger("zilli.scheduler")
 
@@ -120,7 +119,7 @@ class AsyncRolloutScheduler:
         for fut in done:
             try:
                 results.append(fut.result())
-            except Exception as e:
+            except Exception:
                 self._total_errors += 1
 
         for fut in pending_futures:

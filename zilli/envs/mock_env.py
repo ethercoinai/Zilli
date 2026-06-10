@@ -1,6 +1,6 @@
-from typing import List, Dict, Any, Optional, Callable, Union
-from zilli.schema.actions import BaseAction
+from typing import Any, Callable, Dict, List, Optional, Union
 
+from zilli.schema.actions import BaseAction
 
 TOOL_REGISTRY: Dict[str, Callable] = {}
 

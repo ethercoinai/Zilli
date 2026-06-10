@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
+
 from zilli.training.cispo import CISPO_Trainer
 from zilli.training.grpo import GRPO_Trainer
 

@@ -1,7 +1,8 @@
 import random
-import numpy as np
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Dict
+
+import numpy as np
 
 
 class DynamicSOTAScheduler:

@@ -425,3 +425,10 @@ Zilli 不仅是一套系统架构，更是一种**让 AI 自主开发 AI 工具*
 **最后更新**：2026-06-10  
 **维护者**：Zilli 核心团队
 
+## 快速链接
+
+- [Tutorial](docs/tutorial-getting-started.md) — 5 分钟上手
+- [API Reference](docs/reference-distillation.md) — 蒸馏管道 / DSL / CLI
+- [How-to Guide](docs/howto-common-tasks.md) — 常见操作
+- [Explanation](docs/explanation-architecture.md) — 架构设计原理
+

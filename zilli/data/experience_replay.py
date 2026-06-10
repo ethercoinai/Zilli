@@ -1,7 +1,5 @@
 import random
-import math
-from typing import List, Dict, Any, Optional
-from collections import defaultdict
+from typing import Any, Dict, List
 
 from zilli.data.trajectory_cleaner import TrajectoryCleaner
 

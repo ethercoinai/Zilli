@@ -1,11 +1,12 @@
-from typing import List, Dict, Any, Optional
 import re
-import random
+from typing import Dict, List, Optional
 
 
 class SkillEvolutionEngine:
-    def __init__(self, reflection_model: Optional[str] = None):
+    def __init__(self, reflection_model: Optional[str] = None,
+                 cost_controller=None):
         self.reflection_model = reflection_model or "claude-opus-4.6"
+        self.cost_controller = cost_controller
         self.max_iterations = 10
         self.evolution_strategies = [
             "prompt_optimization",
@@ -13,22 +14,52 @@ class SkillEvolutionEngine:
             "boundary_refinement",
             "tool_addiction",
         ]
+        self._cost_log: List[Dict] = []
+
+    def _check_budget(self) -> bool:
+        if not self.cost_controller:
+            return True
+        return self.cost_controller.should_use_planner("evolution", {"max_prob": 0.6})
+
+    def _record_planner(self, success: bool = True):
+        if self.cost_controller:
+            self.cost_controller.record_planner_call("evolution", success)
+            self._cost_log.append({"event": "planner_call", "success": success})
+
+    def _record_executor(self, success: bool = True):
+        if self.cost_controller:
+            self.cost_controller.record_executor_call("evolution", success)
+            self._cost_log.append({"event": "executor_call", "success": success})
+
+    def _wrap_with_cost(self, skill_file: str, trajectory_data: List[Dict],
+                         strategy: str) -> str:
+        module = self._wrap_as_dspy_module(skill_file)
+        if strategy and not self._check_budget():
+            self._record_executor()
+            return self._generate_pr(module, skill_file, "executor_only")
+        reflections = self._reflect_on_trajectories(trajectory_data)
+        optimized = self._apply_evolution(module, reflections, strategy)
+        pr = self._generate_pr(optimized, skill_file, strategy)
+        if strategy != "executor_only":
+            self._record_planner()
+        return pr
 
     def evolve(self, skill_file: str, trajectory_data: List[Dict]) -> str:
         module = self._wrap_as_dspy_module(skill_file)
+        if not self._check_budget():
+            self._record_executor()
+            return self._generate_pr(module, skill_file, "executor_only")
         reflections = self._reflect_on_trajectories(trajectory_data)
         strategy = self._select_strategy(module, reflections)
         optimized = self._apply_evolution(module, reflections, strategy)
         pr = self._generate_pr(optimized, skill_file, strategy)
+        self._record_planner()
         return pr
 
     def evolve_multi_strategy(self, skill_file: str, trajectory_data: List[Dict]) -> List[str]:
-        module = self._wrap_as_dspy_module(skill_file)
-        reflections = self._reflect_on_trajectories(trajectory_data)
         prs = []
         for strategy in self.evolution_strategies:
-            optimized = self._apply_evolution(dict(module), list(reflections), strategy)
-            pr = self._generate_pr(optimized, skill_file, strategy)
+            pr = self._wrap_with_cost(skill_file, trajectory_data, strategy)
             prs.append(pr)
         return prs
 
@@ -138,7 +169,7 @@ class SkillEvolutionEngine:
             f"--- a/{skill_file}",
             f"+++ b/{skill_file}",
             "@@ -1,3 +1,5 @@",
-            f" # Auto-evolved by Zilli SkillEvolutionEngine",
+            " # Auto-evolved by Zilli SkillEvolutionEngine",
             f" # Strategy: {strategy_label}",
             f" # Model: {self.reflection_model}",
             f" # Iterations: {optimized.get('iterations', 1)}",

@@ -2,19 +2,21 @@ import asyncio
 import json
 import logging
 import time
-import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from zilli.envs import HermesSandbox
+import yaml
+
+from zilli.adaptive.sota_scheduler import DynamicSOTAScheduler
 from zilli.data import TrajectoryStore
+from zilli.envs import HermesSandbox
 from zilli.infra import LengthElasticController
 from zilli.infra.async_scheduler import AsyncRolloutScheduler
-from zilli.training.rl_trainer import RLTrainer
-from zilli.training.distillation import DistillationScheduler, DistillationSample
-from zilli.training.champion_challenger import ChampionChallenger, ArenaStatus
+from zilli.schema.actions import FinishAction, MemoryWriteAction
 from zilli.tasks import load_tasks
-from zilli.schema.actions import MemoryWriteAction, FinishAction
+from zilli.training.champion_challenger import ArenaStatus, ChampionChallenger
+from zilli.training.distillation import DistillationSample, DistillationScheduler
+from zilli.training.rl_trainer import RLTrainer
 
 logger = logging.getLogger("zilli.train")
 
@@ -157,6 +159,10 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
         log_dir=log_dir,
     )
 
+    sota_scheduler = DynamicSOTAScheduler(
+        monthly_budget_usd=training_config.get("sota_budget", 500.0),
+    )
+
     arena_config = training_config.get("arena", {})
     arena = ChampionChallenger(
         min_win_gap=arena_config.get("min_win_gap", 0.05),
@@ -179,9 +185,23 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
 
     for epoch in range(num_epochs):
         batch_tasks = tasks[:8] if len(tasks) > 8 else tasks
-        rollout_fn = lambda t: run_rollout(sandbox, t)
+
+        async def sota_aware_rollout(task: Dict) -> Dict:
+            task_type = task.get("type", "default")
+            difficulty = task.get("difficulty", 0.5)
+            use_sota = sota_scheduler.should_call_sota(
+                task_type, {"max_prob": difficulty},
+            )
+            result = await run_rollout(sandbox, task)
+            task_success = result.get("reward", 0.0) > 0
+            if use_sota:
+                sota_scheduler.record_call("default", task_type, task_success)
+            else:
+                sota_scheduler.record_without_sota(task_type, task_success)
+            return result
+
         rollout_results = await scheduler.schedule(
-            rollout_fn,
+            sota_aware_rollout,
             batch_tasks,
             timeout_per_task=training_config.get("timeout_per_task", 300),
         )
@@ -203,6 +223,7 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
         store_stats = store.stats()
         lc_stats = length_controller.get_stats()
         sched_stats = scheduler.get_stats()
+        sota_stats = sota_scheduler.stats()
 
         epoch_metrics = {
             "loss": metrics.get("loss", 0.0),
@@ -213,6 +234,8 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
             "mode": lc_stats["parallel_mode"],
             "completed": sched_stats["total_completed"],
             "errors": sched_stats["total_errors"],
+            "sota_calls": sota_stats["total_calls"],
+            "sota_budget_left": round(sota_stats["remaining_budget"], 2),
         }
 
         for result in rollout_results:
@@ -243,6 +266,8 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
                 epoch_metrics["arena_champion"] = match.champion_score
                 epoch_metrics["arena_challenger"] = match.challenger_score
                 epoch_metrics["arena_winner"] = match.winner or ""
+
+        sota_scheduler.reset_hourly_counter()
 
         avg_reward = store_stats.get("avg_golden_reward", 0.0)
         if avg_reward > experiment.best_reward:

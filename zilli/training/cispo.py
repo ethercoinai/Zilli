@@ -1,8 +1,9 @@
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
+
 import numpy as np
 
 
-class CISPO_Trainer:
+class CISPO_Trainer:  # noqa: N801
     def __init__(self, config: Dict[str, Any]):
         self.clip_range = config.get("clip_range", 0.2)
         self.kl_penalty = config.get("kl_penalty", 0.01)

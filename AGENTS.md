@@ -110,3 +110,8 @@ Phase 1: 任务定义 → Phase 2: 轨迹数据 → Phase 3: RL 基础设施 →
 | 长度自适应 | Earl 三重机制 | 防止上下文爆炸 |
 | RL 算法 | CISPO + GRPO | 多轮 Agent 优化，MoE 稳定 |
 | 优势估计 | 蒙特卡洛 + GAE | 支持无 Value Network 场景 |
+
+## Health Stack
+
+- lint: ruff check .
+- test: pytest

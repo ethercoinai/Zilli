@@ -1,7 +1,8 @@
 import logging
-import yaml
-from typing import List, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List
+
+import yaml
 
 from zilli.schema.actions import TaskConfig
 

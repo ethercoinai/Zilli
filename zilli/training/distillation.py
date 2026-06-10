@@ -1,13 +1,13 @@
-import logging
-import time
 import json
+import logging
 import math
-from pathlib import Path
-from typing import List, Dict, Optional, Callable, Tuple
-from dataclasses import dataclass, field
+import time
 from collections import deque
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
 
-from zilli.distillation.losses import DualModelDistillationLoss
+from zilli.infra.device_utils import get_device, is_gpu_available
 
 logger = logging.getLogger("zilli.distillation")
 
@@ -57,7 +57,6 @@ class DistillationScheduler:
         log_dir: str = "",
         lora_callback: Optional[Callable] = None,
         full_sft_callback: Optional[Callable] = None,
-        use_exact_loss: bool = False,
     ):
         self.lambda_bc = lambda_bc
         self.lambda_rl = lambda_rl
@@ -65,10 +64,6 @@ class DistillationScheduler:
         self.kl_beta = kl_beta
         self.reward_gamma = reward_gamma
         self.embedding_delta = embedding_delta
-        self._exact_loss = DualModelDistillationLoss(
-            lambda_bc=lambda_bc, lambda_rl=lambda_rl, lambda_reg=lambda_reg,
-            beta=kl_beta, gamma=reward_gamma, delta=embedding_delta,
-        ) if use_exact_loss else None
         self.lora_threshold = lora_threshold
         self.distill_interval = distill_interval_hours
         self.full_sft_interval = full_sft_interval_days * 24
@@ -156,15 +151,22 @@ class DistillationScheduler:
             executor_rewards.append(s.executor_reward)
             planner_rewards.append(s.planner_reward)
 
-        bc_loss, kl = self.compute_bc_loss(executor_probs, planner_probs)
-        rl_loss = self.compute_rl_loss(executor_rewards, planner_rewards)
-        reg_loss = self.compute_reg_loss(self._buffer)
-
-        total_loss = (
-            self.lambda_bc * bc_loss
-            + self.lambda_rl * rl_loss
-            + self.lambda_reg * reg_loss
-        )
+        gpu_result = self.compute_loss_torch(self._buffer)
+        if gpu_result:
+            bc_loss = gpu_result["bc_loss"]
+            rl_loss = gpu_result["rl_loss"]
+            reg_loss = gpu_result["reg_loss"]
+            total_loss = gpu_result["total"]
+            kl = gpu_result["kl"]
+        else:
+            bc_loss, kl = self.compute_bc_loss(executor_probs, planner_probs)
+            rl_loss = self.compute_rl_loss(executor_rewards, planner_rewards)
+            reg_loss = self.compute_reg_loss(self._buffer)
+            total_loss = (
+                self.lambda_bc * bc_loss
+                + self.lambda_rl * rl_loss
+                + self.lambda_reg * reg_loss
+            )
 
         avg_exec_reward = sum(executor_rewards) / len(executor_rewards) if executor_rewards else 0.0
         avg_plan_reward = sum(planner_rewards) / len(planner_rewards) if planner_rewards else 0.0
@@ -255,6 +257,146 @@ class DistillationScheduler:
             "lambda_reg": self.lambda_reg,
             "kl_beta": self.kl_beta,
         }
+
+    def compute_loss_torch(self, samples: List[DistillationSample]) -> Optional[Dict[str, float]]:
+        if not is_gpu_available():
+            return None
+        try:
+            import torch
+            device = get_device()
+            exec_probs = torch.tensor(
+                [max(min(s.executor_log_prob, 1 - 1e-10), 1e-10) for s in samples],
+                device=device,
+            )
+            plan_probs = torch.tensor(
+                [max(min(s.planner_log_prob, 1 - 1e-10), 1e-10) for s in samples],
+                device=device,
+            )
+            exec_rew = torch.tensor([s.executor_reward for s in samples], device=device)
+            plan_rew = torch.tensor([s.planner_reward for s in samples], device=device)
+
+            bc = -(plan_probs * torch.log(exec_probs)).mean()
+            kl = (plan_probs * (torch.log(plan_probs) - torch.log(exec_probs))).mean()
+            bc_loss = bc + self.kl_beta * kl
+
+            rl_loss = (-exec_rew + self.reward_gamma * (exec_rew - plan_rew) ** 2).mean()
+
+            reg = torch.tensor(0.0, device=device)
+            count = 0
+            for s in samples:
+                if s.executor_embedding is not None and s.planner_embedding is not None:
+                    ee = torch.tensor(s.executor_embedding, device=device)
+                    pe = torch.tensor(s.planner_embedding, device=device)
+                    d = torch.norm(ee - pe)
+                    reg = reg + torch.clamp(d - self.embedding_delta, min=0)
+                    count += 1
+            reg_loss = (reg / count) if count > 0 else torch.tensor(0.0, device=device)
+
+            total = (
+                self.lambda_bc * bc_loss
+                + self.lambda_rl * rl_loss
+                + self.lambda_reg * reg_loss
+            )
+
+            return {
+                "bc_loss": bc_loss.item(),
+                "rl_loss": rl_loss.item(),
+                "reg_loss": reg_loss.item(),
+                "total": total.item(),
+                "kl": kl.item(),
+            }
+        except ImportError:
+            logger.debug("torch not available for GPU compute")
+            return None
+
+    def save_checkpoint(self, path: str = "") -> str:
+        if not path:
+            path = str(self.log_dir / "checkpoint.json")
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "scheduler_params": {
+                "lambda_bc": self.lambda_bc,
+                "lambda_rl": self.lambda_rl,
+                "lambda_reg": self.lambda_reg,
+                "kl_beta": self.kl_beta,
+                "reward_gamma": self.reward_gamma,
+                "embedding_delta": self.embedding_delta,
+                "lora_threshold": self.lora_threshold,
+                "distill_interval_hours": self.distill_interval,
+                "full_sft_interval_days": self.full_sft_interval // 24,
+                "log_dir": str(self.log_dir),
+            },
+            "state": {
+                "buffer": [
+                    {
+                        "executor_action": s.executor_action,
+                        "planner_action": s.planner_action,
+                        "executor_log_prob": s.executor_log_prob,
+                        "planner_log_prob": s.planner_log_prob,
+                        "executor_reward": s.executor_reward,
+                        "planner_reward": s.planner_reward,
+                        "state_embedding": s.state_embedding,
+                        "executor_embedding": s.executor_embedding,
+                        "planner_embedding": s.planner_embedding,
+                    }
+                    for s in self._buffer
+                ],
+                "cycles": [
+                    {
+                        "cycle_id": c.cycle_id,
+                        "start_time": c.start_time,
+                        "end_time": c.end_time,
+                        "samples": c.samples,
+                        "bc_loss": c.bc_loss,
+                        "rl_loss": c.rl_loss,
+                        "reg_loss": c.reg_loss,
+                        "total_loss": c.total_loss,
+                        "kl_divergence": c.kl_divergence,
+                        "avg_executor_reward": c.avg_executor_reward,
+                        "avg_planner_reward": c.avg_planner_reward,
+                        "lora_triggered": c.lora_triggered,
+                        "metrics": c.metrics,
+                    }
+                    for c in self._cycles
+                ],
+                "total_samples": self._total_samples,
+                "lora_events": self._lora_events,
+                "full_sft_events": self._full_sft_events,
+                "last_lora_time": self._last_lora_time,
+                "last_full_sft_time": self._last_full_sft_time,
+                "recent_kl": list(self._recent_kl),
+            },
+        }
+        with open(p, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info("Checkpoint saved to %s (%d samples, %d cycles)", p, self._total_samples, len(self._cycles))
+        return str(p)
+
+    @classmethod
+    def load_checkpoint(cls, path: str) -> "DistillationScheduler":
+        p = Path(path)
+        if not p.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {path}")
+        with open(p) as f:
+            data = json.load(f)
+        params = data["scheduler_params"]
+        scheduler = cls(**params)
+        state = data["state"]
+        scheduler._buffer = [
+            DistillationSample(**s) for s in state["buffer"]
+        ]
+        scheduler._cycles = [
+            DistillationCycle(**c) for c in state["cycles"]
+        ]
+        scheduler._total_samples = state["total_samples"]
+        scheduler._lora_events = state["lora_events"]
+        scheduler._full_sft_events = state["full_sft_events"]
+        scheduler._last_lora_time = state["last_lora_time"]
+        scheduler._last_full_sft_time = state["last_full_sft_time"]
+        scheduler._recent_kl = deque(state["recent_kl"], maxlen=100)
+        logger.info("Checkpoint loaded from %s (%d samples, %d cycles)", p, scheduler._total_samples, len(scheduler._cycles))
+        return scheduler
 
     def _log_cycle(self, cycle: DistillationCycle):
         self.log_dir.mkdir(parents=True, exist_ok=True)

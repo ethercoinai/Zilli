@@ -1,7 +1,9 @@
 import asyncio
+
 import numpy as np
-from zilli.distillation import DualModelDistillationLoss
+
 from zilli.adaptive import DynamicSOTAScheduler
+from zilli.distillation import DualModelDistillationLoss
 
 
 async def main():

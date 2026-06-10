@@ -4,8 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zilli"
-version = "0.1.0"
-description = "Zilli: self-evolving AI agent framework"
+version = "0.2.0"
+description = "Zilli: self-evolving AI agent framework for autonomous tool development"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Zilli Contributors"},
+]
+keywords = ["ai", "agent", "reinforcement-learning", "distillation", "autonomous"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5",
@@ -13,7 +29,22 @@ dependencies = [
     "numpy>=1.24",
     "dspy-ai>=2.5",
 ]
-optional-dependencies = {train = ["torch>=2.1", "transformers>=4.36"], dev = ["pytest>=7.0", "pytest-asyncio>=0.23"]}
+
+[project.optional-dependencies]
+train = [
+    "torch>=2.1",
+    "transformers>=4.36",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "ruff>=0.3",
+]
+
+[project.urls]
+homepage = "https://github.com/iclawos/Zilli"
+repository = "https://github.com/iclawos/Zilli.git"
 
 [project.scripts]
 zilli = "zilli.cli:main"
@@ -21,3 +52,16 @@ zilli-evolve = "zilli.evolution.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["zilli*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]
+ignore = ["E501"]

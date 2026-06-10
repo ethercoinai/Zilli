@@ -1,16 +1,25 @@
+from zilli.infra.device_utils import (
+    DeviceType,
+    detect_device,
+    get_device,
+    is_cuda_available,
+    is_gpu_available,
+    is_mps_available,
+    set_device,
+)
 from zilli.schema.actions import (
     BaseAction,
-    MemoryWriteAction,
-    MemoryReadAction,
-    SkillCreateAction,
-    SkillUpdateAction,
     BashRunAction,
     FileReadAction,
     FileWriteAction,
     FinishAction,
-    TrajectoryTemplateStep,
+    MemoryReadAction,
+    MemoryWriteAction,
     RewardRule,
+    SkillCreateAction,
+    SkillUpdateAction,
     TaskConfig,
+    TrajectoryTemplateStep,
 )
 
 __all__ = [
@@ -26,4 +35,7 @@ __all__ = [
     "TrajectoryTemplateStep",
     "RewardRule",
     "TaskConfig",
+    "get_device", "set_device", "detect_device",
+    "is_cuda_available", "is_mps_available", "is_gpu_available",
+    "DeviceType",
 ]

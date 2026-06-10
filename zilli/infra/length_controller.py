@@ -1,6 +1,7 @@
-import numpy as np
-from typing import List, Dict, Any, Optional
 from collections import deque
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 
 class LayoutAwareDispatcher:
@@ -55,7 +56,6 @@ class LengthElasticController:
 
         self._history.extend(observed_lengths)
 
-        p50_len = float(np.percentile(observed_lengths, 50))
         p95_len = float(np.percentile(observed_lengths, 95))
         p99_len = float(np.percentile(observed_lengths, 99))
         max_len = float(max(observed_lengths))
