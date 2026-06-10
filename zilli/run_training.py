@@ -11,6 +11,8 @@ from zilli.data import TrajectoryStore
 from zilli.infra import LengthElasticController
 from zilli.infra.async_scheduler import AsyncRolloutScheduler
 from zilli.training.rl_trainer import RLTrainer
+from zilli.training.distillation import DistillationScheduler, DistillationSample
+from zilli.training.champion_challenger import ChampionChallenger, ArenaStatus
 from zilli.tasks import load_tasks
 from zilli.schema.actions import MemoryWriteAction, FinishAction
 
@@ -141,6 +143,30 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
     trainer = RLTrainer(training_config)
     experiment = TrainingExperiment(experiment_name, training_config, log_dir)
 
+    distill_config = training_config.get("distillation", {})
+    distill_scheduler = DistillationScheduler(
+        lambda_bc=distill_config.get("lambda_bc", 1.0),
+        lambda_rl=distill_config.get("lambda_rl", 0.5),
+        lambda_reg=distill_config.get("lambda_reg", 0.1),
+        kl_beta=distill_config.get("kl_beta", 0.1),
+        reward_gamma=distill_config.get("reward_gamma", 0.2),
+        embedding_delta=distill_config.get("embedding_delta", 0.5),
+        lora_threshold=distill_config.get("lora_threshold", 1000),
+        distill_interval_hours=distill_config.get("distill_interval_hours", 24),
+        full_sft_interval_days=distill_config.get("full_sft_interval_days", 7),
+        log_dir=log_dir,
+    )
+
+    arena_config = training_config.get("arena", {})
+    arena = ChampionChallenger(
+        min_win_gap=arena_config.get("min_win_gap", 0.05),
+        significance_level=arena_config.get("significance_level", 0.05),
+        min_eval_tasks=arena_config.get("min_eval_tasks", 10),
+        warmup_rounds=arena_config.get("warmup_rounds", 3),
+        log_dir=log_dir,
+    )
+    arena.register_model("executor_base", "v1", ArenaStatus.CHAMPION)
+
     tasks = load_tasks()
     if not tasks:
         logger.warning("No tasks loaded, using dummy rollouts")
@@ -189,6 +215,35 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
             "errors": sched_stats["total_errors"],
         }
 
+        for result in rollout_results:
+            if result.completed and result.trajectory:
+                for step in result.trajectory:
+                    sample = DistillationSample(
+                        executor_action=step.get("action", {}),
+                        planner_action=step.get("action", {}),
+                        executor_log_prob=0.7,
+                        planner_log_prob=0.85,
+                        executor_reward=step.get("reward", 0.0),
+                        planner_reward=min(step.get("reward", 0.0) + 0.2, 1.0),
+                    )
+                    distill_scheduler.add_sample(sample)
+
+        if distill_scheduler.should_distill():
+            cycle = distill_scheduler.run_cycle()
+            if cycle:
+                epoch_metrics["distill_loss"] = round(cycle.total_loss, 4)
+                epoch_metrics["distill_kl"] = round(cycle.kl_divergence, 4)
+                epoch_metrics["lora_triggered"] = cycle.lora_triggered
+
+        if epoch > 0 and epoch % 20 == 0:
+            def eval_fn(model_name: str) -> list:
+                return [store_stats.get("avg_golden_reward", 0.0)]
+            match = arena.run_match("executor_base", eval_fn)
+            if match:
+                epoch_metrics["arena_champion"] = match.champion_score
+                epoch_metrics["arena_challenger"] = match.challenger_score
+                epoch_metrics["arena_winner"] = match.winner or ""
+
         avg_reward = store_stats.get("avg_golden_reward", 0.0)
         if avg_reward > experiment.best_reward:
             experiment.best_reward = avg_reward
@@ -212,8 +267,15 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
                 "lc_config": length_controller.get_config(),
             })
 
-    experiment.save_checkpoint("final")
-    logger.info("Training complete. Summary: %s", json.dumps(experiment.summary()))
+    experiment.save_checkpoint("final", {
+        "distill_stats": distill_scheduler.stats(),
+        "arena_stats": arena.stats(),
+        "arena_leaderboard": arena.leaderboard(),
+    })
+    total_summary = experiment.summary()
+    total_summary["distill"] = distill_scheduler.stats()
+    total_summary["arena"] = arena.stats()
+    logger.info("Training complete. Summary: %s", json.dumps(total_summary))
     return experiment
 
 

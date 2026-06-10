@@ -3,6 +3,7 @@ import asyncio
 import yaml
 from pathlib import Path
 
+import math
 from zilli.schema.actions import (
     BaseAction, MemoryWriteAction, MemoryReadAction,
     SkillCreateAction, BashRunAction, FileWriteAction, FinishAction,
@@ -19,6 +20,10 @@ from zilli.infra.async_scheduler import AsyncRolloutScheduler, RolloutResult, Ro
 from zilli.run_training import TrainingExperiment
 from zilli.evolution import SkillEvolutionEngine
 from zilli.learner import ContinuousLearner
+from zilli.training.distillation import DistillationScheduler, DistillationSample, DistillationCycle
+from zilli.training.champion_challenger import (
+    ChampionChallenger, ArenaMatch, ArenaModel, ArenaStatus,
+)
 
 
 class TestSchema:
@@ -613,3 +618,192 @@ class TestScheduler:
         results = await sched.schedule(slow_rollout, tasks, timeout_per_task=1)
         assert len(results) == 1
         assert not results[0].completed
+
+
+class TestDistillation:
+    def test_distillation_sample_creation(self):
+        s = DistillationSample(
+            executor_action={"tool": "bash"},
+            planner_action={"tool": "bash"},
+            executor_log_prob=0.7,
+            planner_log_prob=0.85,
+            executor_reward=0.6,
+            planner_reward=0.9,
+        )
+        assert s.executor_log_prob == 0.7
+        assert s.planner_log_prob == 0.85
+
+    def test_bc_loss_basic(self):
+        d = DistillationScheduler()
+        bc, kl = d.compute_bc_loss([0.7, 0.8], [0.85, 0.9])
+        assert bc > 0
+        assert kl > 0
+        assert bc >= kl
+
+    def test_bc_loss_perfect_match(self):
+        d = DistillationScheduler()
+        bc, kl = d.compute_bc_loss([0.9, 0.8], [0.9, 0.8])
+        assert bc > 0
+        assert kl == 0.0
+
+    def test_rl_loss(self):
+        d = DistillationScheduler(reward_gamma=0.5)
+        loss = d.compute_rl_loss([0.0, 0.0], [1.0, 1.0])
+        assert loss > 0
+
+    def test_rl_loss_executor_wins(self):
+        d = DistillationScheduler(reward_gamma=0.2)
+        loss = d.compute_rl_loss([0.9, 0.8], [0.5, 0.6])
+        assert loss < 0
+
+    def test_reg_loss_no_embeddings(self):
+        d = DistillationScheduler()
+        samples = [DistillationSample(
+            executor_action={}, planner_action={},
+            executor_log_prob=0.7, planner_log_prob=0.85,
+            executor_reward=0.6, planner_reward=0.9,
+        )]
+        loss = d.compute_reg_loss(samples)
+        assert loss == 0.0
+
+    def test_reg_loss_with_embeddings(self):
+        d = DistillationScheduler(embedding_delta=0.5)
+        samples = [
+            DistillationSample(
+                executor_action={}, planner_action={},
+                executor_log_prob=0.7, planner_log_prob=0.85,
+                executor_reward=0.6, planner_reward=0.9,
+                executor_embedding=[0.1, 0.2, 0.3],
+                planner_embedding=[0.5, 0.6, 0.7],
+            )
+        ]
+        loss = d.compute_reg_loss(samples)
+        assert loss > 0
+
+    def test_full_cycle(self):
+        d = DistillationScheduler(lora_threshold=10)
+        for i in range(20):
+            d.add_sample(DistillationSample(
+                executor_action={"step": i}, planner_action={"step": i},
+                executor_log_prob=0.6 + i * 0.002,
+                planner_log_prob=0.85,
+                executor_reward=0.5,
+                planner_reward=0.9,
+            ))
+        assert d.should_distill()
+        cycle = d.run_cycle()
+        assert cycle is not None
+        assert cycle.samples == 20
+        assert cycle.total_loss > 0
+        assert cycle.kl_divergence > 0
+
+    def test_add_batch(self):
+        d = DistillationScheduler()
+        samples = [DistillationSample(
+            executor_action={}, planner_action={},
+            executor_log_prob=0.7, planner_log_prob=0.85,
+            executor_reward=0.6, planner_reward=0.9,
+        ) for _ in range(20)]
+        d.add_batch(samples)
+        assert d.stats()["total_samples"] == 20
+
+    def test_stats(self):
+        d = DistillationScheduler(lambda_bc=0.8, lambda_rl=0.3)
+        stats = d.stats()
+        assert stats["lambda_bc"] == 0.8
+        assert stats["lambda_rl"] == 0.3
+        assert stats["cycles_completed"] == 0
+        assert stats["total_samples"] == 0
+
+
+class TestChampionChallenger:
+    def test_register_champion(self):
+        arena = ChampionChallenger(min_eval_tasks=1)
+        arena.register_model("v1", "1.0", ArenaStatus.CHAMPION)
+        assert arena.get_champion() == "v1"
+
+    def test_register_contender(self):
+        arena = ChampionChallenger()
+        arena.register_model("v2", "2.0", ArenaStatus.CONTENDER)
+        assert arena.get_champion() is None
+
+    def test_add_score(self):
+        arena = ChampionChallenger()
+        arena.register_model("m1", "1.0", ArenaStatus.CHAMPION)
+        arena.add_score("m1", 0.85)
+        arena.add_score("m1", 0.90)
+        lb = arena.leaderboard()
+        assert lb[0]["avg_score"] == pytest.approx(0.875, abs=0.01)
+
+    def test_run_match_champion_wins(self):
+        arena = ChampionChallenger(min_win_gap=0.1, warmup_rounds=0)
+        arena.register_model("champ", "1.0", ArenaStatus.CHAMPION)
+        arena.register_model("chal", "2.0", ArenaStatus.CONTENDER)
+
+        def eval_fn(name):
+            if name == "champ":
+                return [0.9, 0.85, 0.88, 0.92, 0.87, 0.9, 0.86, 0.91, 0.89, 0.88]
+            return [0.6, 0.55, 0.58, 0.62, 0.57, 0.6, 0.56, 0.61, 0.59, 0.58]
+
+        match = arena.run_match("chal", eval_fn)
+        assert match is not None
+        assert match.champion_score > match.challenger_score
+        assert match.winner == "champ"
+
+    def test_run_match_challenger_wins(self):
+        arena = ChampionChallenger(min_win_gap=0.1, warmup_rounds=0)
+        arena.register_model("champ", "1.0", ArenaStatus.CHAMPION)
+        arena.register_model("chal", "2.0", ArenaStatus.CONTENDER)
+
+        def eval_fn(name):
+            if name == "champ":
+                return [0.5, 0.55, 0.48, 0.52, 0.51] * 2
+            return [0.9, 0.85, 0.88, 0.92, 0.87] * 2
+
+        match = arena.run_match("chal", eval_fn)
+        assert match is not None
+        assert match.challenger_score > match.champion_score
+        assert match.winner == "chal"
+
+    def test_rollback(self):
+        arena = ChampionChallenger(min_eval_tasks=1, warmup_rounds=0)
+        arena.register_model("v1", "1.0", ArenaStatus.CHAMPION)
+        arena.register_model("v2", "2.0", ArenaStatus.CONTENDER)
+
+        def eval_fn(name):
+            if name == "v1":
+                return [0.5] * 10
+            return [0.9] * 10
+
+        arena.run_match("v2", eval_fn)
+        champions = [m for m in arena._models.values() if m.status == ArenaStatus.CHAMPION]
+        assert any(m.name == "v2" for m in champions)
+
+        rolled = arena.rollback()
+        assert rolled == "v1"
+        assert arena.get_champion() == "v1"
+
+    def test_leaderboard_ordering(self):
+        arena = ChampionChallenger()
+        arena.register_model("a", "1.0", ArenaStatus.CHAMPION)
+        arena.register_model("b", "2.0", ArenaStatus.CONTENDER)
+        arena.add_score("a", 0.9)
+        arena.add_score("b", 0.8)
+        arena.add_score("a", 0.85)
+        lb = arena.leaderboard()
+        assert lb[0]["name"] == "a"
+        assert lb[0]["avg_score"] >= lb[1]["avg_score"]
+
+    def test_stats_output(self):
+        arena = ChampionChallenger(min_win_gap=0.1)
+        arena.register_model("v1", "1.0", ArenaStatus.CHAMPION)
+        arena.register_model("v2", "2.0", ArenaStatus.CONTENDER)
+
+        def eval_fn(name):
+            return [0.8, 0.85, 0.9, 0.88, 0.82, 0.87, 0.83, 0.86, 0.84, 0.89]
+
+        arena.run_match("v2", eval_fn)
+        stats = arena.stats()
+        assert stats["total_matches"] == 1
+        assert stats["current_champion"] == "v1"
+        assert stats["champion_wins"] == 1
