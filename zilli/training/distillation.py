@@ -7,6 +7,8 @@ from typing import List, Dict, Optional, Callable, Tuple
 from dataclasses import dataclass, field
 from collections import deque
 
+from zilli.distillation.losses import DualModelDistillationLoss
+
 logger = logging.getLogger("zilli.distillation")
 
 
@@ -55,6 +57,7 @@ class DistillationScheduler:
         log_dir: str = "",
         lora_callback: Optional[Callable] = None,
         full_sft_callback: Optional[Callable] = None,
+        use_exact_loss: bool = False,
     ):
         self.lambda_bc = lambda_bc
         self.lambda_rl = lambda_rl
@@ -62,6 +65,10 @@ class DistillationScheduler:
         self.kl_beta = kl_beta
         self.reward_gamma = reward_gamma
         self.embedding_delta = embedding_delta
+        self._exact_loss = DualModelDistillationLoss(
+            lambda_bc=lambda_bc, lambda_rl=lambda_rl, lambda_reg=lambda_reg,
+            beta=kl_beta, gamma=reward_gamma, delta=embedding_delta,
+        ) if use_exact_loss else None
         self.lora_threshold = lora_threshold
         self.distill_interval = distill_interval_hours
         self.full_sft_interval = full_sft_interval_days * 24
