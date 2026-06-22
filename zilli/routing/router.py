@@ -8,6 +8,7 @@ from zilli.models.base import GenerationResult
 from zilli.models.config import ModelRole
 from zilli.models.registry import ModelRegistry
 from zilli.routing.classifier import RouteClassifier, RouteDecision, RouteType
+from zilli.security.sanitizer import InputSanitizer, safe_format
 
 if TYPE_CHECKING:
     from zilli.cache import CacheEngine
@@ -100,6 +101,7 @@ class LocalHybridRouter:
         self.registry = registry
         self.config = config
         self.cache = cache
+        self.sanitizer = InputSanitizer()
 
         if classifier is not None:
             self.classifier = classifier
@@ -132,7 +134,8 @@ class LocalHybridRouter:
         return result
 
     async def plan(self, request: str, industry: str = "") -> str:
-        prompt = self._enrich_prompt(_PLAN_PROMPT.format(request=request), industry)
+        safe_request = self.sanitizer.sanitize(request)
+        prompt = self._enrich_prompt(safe_format(_PLAN_PROMPT, request=safe_request), industry)
         result = await self._with_cache(ModelRole.PLANNER, prompt)
         if result.error:
             logger.error("Planner failed: %s", result.error)
@@ -140,8 +143,9 @@ class LocalHybridRouter:
         return result.text
 
     async def execute(self, plan: str, request: str, industry: str = "") -> str:
+        safe_request = self.sanitizer.sanitize(request)
         prompt = self._enrich_prompt(
-            _EXECUTE_PROMPT.format(plan=plan, request=request), industry,
+            safe_format(_EXECUTE_PROMPT, plan=plan, request=safe_request), industry,
         )
         result = await self._with_cache(ModelRole.EXECUTOR, prompt)
         if result.error:
@@ -167,8 +171,9 @@ class LocalHybridRouter:
         return results
 
     async def review(self, plan: str, draft: str, request: str, industry: str = "") -> str:
+        safe_request = self.sanitizer.sanitize(request)
         prompt = self._enrich_prompt(
-            _REVIEW_PROMPT.format(plan=plan, draft=draft, request=request), industry,
+            safe_format(_REVIEW_PROMPT, plan=plan, draft=draft, request=safe_request), industry,
         )
         result = await self.registry.generate(ModelRole.REVIEWER, prompt)
         if result.error:
@@ -192,6 +197,7 @@ class LocalHybridRouter:
     ) -> RouteResult:
         import time
         start = time.monotonic()
+        request = self.sanitizer.sanitize(request)
 
         if force_full_route:
             decision = RouteDecision(RouteType.FULL_ROUTE, "forced full route")

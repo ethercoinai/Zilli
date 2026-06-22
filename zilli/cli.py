@@ -481,14 +481,11 @@ def _run_evaluation(task_id: str = None, cost_aware: bool = False, budget: float
 
 
 def _run_train(config_path: str = None, cost_aware: bool = False, budget: float = None,
-               zilli_config: Optional["ZilliConfig"] = None):
-    config = {
-        "algorithm": "CISPO",
-        "clip_range": 0.2,
-        "kl_penalty": 0.01,
-        "is_weight_cap": 5.0,
-        "gamma": 0.99,
-    }
+               zilli_config: Optional["ZilliConfig"] = None, dry_run: bool = False):
+    from zilli.training.config import TrainingConfig
+    from zilli.training.data import make_dummy_failure, make_dummy_golden
+
+    cfg_dict = {}
     if config_path:
         p = Path(config_path)
         if ".." in str(p):
@@ -497,9 +494,10 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
         p = p.resolve()
         if p.exists():
             with open(p) as f:
-                config.update(yaml.safe_load(f).get("training", {}))
+                cfg_dict = yaml.safe_load(f).get("training", {})
 
-    trainer = RLTrainer(config)
+    training_config = TrainingConfig.from_dict(cfg_dict)
+    trainer = RLTrainer(training_config.to_training_kwargs())
     store = TrajectoryStore()
 
     cc = None
@@ -508,24 +506,12 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
         cc = CostController(monthly_budget=budget or 500.0, config=zilli_config)
         print(f"Cost-aware training: ${cc.scheduler.monthly_budget:.0f} monthly budget")
 
-    import numpy as np
-    dummy_golden = [
-        {"action": {"tool_name": "memory_write", "key": "x", "value": "1"},
-         "observation": {"success": True}, "reward": 1.0, "done": False,
-         "log_prob": np.random.normal(-1.0, 0.5), "old_log_prob": np.random.normal(-0.5, 0.5)},
-        {"action": {"tool_name": "memory_read", "key": "x"},
-         "observation": {"success": True, "value": "1"}, "reward": 1.0, "done": True,
-         "log_prob": np.random.normal(-1.0, 0.5), "old_log_prob": np.random.normal(-0.5, 0.5)},
-    ]
-    dummy_failure = [
-        {"action": {"tool_name": "bash_run", "command": "bad"},
-         "observation": {"error": "fail", "success": False}, "reward": -0.5, "done": True,
-         "log_prob": np.random.normal(-2.0, 0.5), "old_log_prob": np.random.normal(-1.0, 0.5)},
-    ]
-    for i in range(10):
-        store.add_trajectory(dummy_golden, 0.9 + i * 0.01)
-    for i in range(5):
-        store.add_trajectory(dummy_failure, 0.1)
+    golden = make_dummy_golden()
+    failure = make_dummy_failure()
+    for g in golden:
+        store.add_trajectory(g["trajectory"], g["reward"])
+    for f in failure:
+        store.add_trajectory(f["trajectory"], f["reward"])
 
     planner_calls = 0
     executor_calls = 0
@@ -555,8 +541,7 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
         print(f"    Executor calls: {executor_calls}")
         print(f"    Remaining budget: ${snap.remaining_budget:.2f}")
 
-    print("IMPORTANT: This trainer uses dummy/generated data for simulation. "
-          "No real model was trained. Use --dry-run to explicitly acknowledge this.")
+    print("Training simulation complete. Use --dry-run to acknowledge this is a dry run.")
     print("Training test complete.")
 
 

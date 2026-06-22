@@ -1,22 +1,24 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from zilli.training.cispo import CISPO_Trainer
+from zilli.training.config import TrainingConfig
 from zilli.training.grpo import GRPO_Trainer
 
 
 class RLTrainer:
-    def __init__(self, config: Dict):
-        self.config = config
-        algorithm = config.get("algorithm", "CISPO").upper()
+    def __init__(self, config: Optional[Dict] = None):
+        self.training_config = TrainingConfig.from_dict(config or {})
+        self.raw_config = config or {}
+        algorithm = self.training_config.algorithm
         if algorithm == "CISPO":
-            self.impl = CISPO_Trainer(config)
+            self.impl = CISPO_Trainer(self.training_config.to_training_kwargs())
         elif algorithm == "GRPO":
-            self.impl = GRPO_Trainer(config)
+            self.impl = GRPO_Trainer(self.training_config.to_training_kwargs())
         else:
             raise ValueError(f"Unknown algorithm: {algorithm}")
 
     def update(self, batch: List[Dict]) -> Dict[str, float]:
-        if self.config.get("algorithm", "").upper() == "GRPO":
+        if self.training_config.algorithm == "GRPO":
             advantages = self.impl.compute_advantages(batch)
         else:
             rewards = [t.get("reward", 0.0) for t in batch]

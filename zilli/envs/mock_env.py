@@ -1,21 +1,30 @@
 import asyncio
+import threading
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from zilli.schema.actions import BaseAction
 
 _TOOLS: Dict[str, Callable] = {}
+_TOOLS_LOCK = threading.RLock()
 
 
 def register_tool(name: str):
     def wrapper(fn):
-        _TOOLS[name] = fn
+        with _TOOLS_LOCK:
+            _TOOLS[name] = fn
         return fn
     return wrapper
 
 
 def get_tool_registry() -> Dict[str, Callable]:
-    return deepcopy(_TOOLS)
+    with _TOOLS_LOCK:
+        return deepcopy(_TOOLS)
+
+
+def _get_tool(name: str) -> Optional[Callable]:
+    with _TOOLS_LOCK:
+        return _TOOLS.get(name)
 
 
 @register_tool("memory_write")
@@ -130,7 +139,7 @@ class HermesSandbox:
         self.conversation_turns += 1
 
         tool_name = action_dict.get("tool_name", "") if isinstance(action, dict) else action.tool_name
-        tool_fn = _TOOLS.get(tool_name)
+        tool_fn = _get_tool(tool_name)
 
         if tool_fn is None:
             return {"observation": {"error": f"Unknown tool: {tool_name}"}, "reward": -1.0, "done": True}
