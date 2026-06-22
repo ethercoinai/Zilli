@@ -53,7 +53,8 @@ class AsyncRolloutScheduler:
         batch_start = time.time()
 
         async def run_single(task, retry_count: int = 0) -> RolloutResult:
-            task_id = str(uuid.uuid4())
+            original_task_id = str(task.get("id", "")) if isinstance(task, dict) else ""
+            task_id = original_task_id or str(uuid.uuid4())
             task_start = time.time()
 
             if task_id in self._cancelled:
@@ -63,7 +64,8 @@ class AsyncRolloutScheduler:
                     elapsed_sec=time.time() - task_start, retry_count=retry_count,
                 )
 
-            self._total_scheduled += 1
+            if retry_count == 0:
+                self._total_scheduled += 1
             try:
                 result = await asyncio.wait_for(
                     rollout_fn(task), timeout=timeout_per_task
@@ -103,34 +105,35 @@ class AsyncRolloutScheduler:
                     retry_count=retry_count,
                 )
 
-        pending = [asyncio.ensure_future(run_single(t)) for t in tasks]
-        if not pending:
+        tasks_map: dict[asyncio.Task, Any] = {asyncio.create_task(run_single(t)): t for t in tasks}
+        pending_set: set[asyncio.Task] = set(tasks_map.keys())
+        if not pending_set:
             return results
 
         if self.progress_callback:
             self.progress_callback(0, len(tasks), "started")
 
-        done, pending_futures = await asyncio.wait(
-            pending,
+        done, pending_set = await asyncio.wait(
+            pending_set,
             timeout=self.window,
             return_when=asyncio.ALL_COMPLETED,
         )
 
-        for fut in done:
+        for task in done:
             try:
-                results.append(fut.result())
+                results.append(task.result())
             except Exception:
                 self._total_errors += 1
 
-        for fut in pending_futures:
-            try:
-                result = await asyncio.wait_for(fut, timeout=10)
-            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                result = RolloutResult(
-                    task_id=str(uuid.uuid4()), trajectory=[], reward=-1.0,
-                    tokens=0, completed=False, status=RolloutStatus.CANCELLED,
-                    error="window_closed",
-                )
+        for task in pending_set:
+            task.cancel()
+            original = tasks_map[task]
+            orig_id = str(original.get("id", "")) if isinstance(original, dict) else str(uuid.uuid4())
+            result = RolloutResult(
+                task_id=orig_id, trajectory=[], reward=-1.0,
+                tokens=0, completed=False, status=RolloutStatus.CANCELLED,
+                error="window_closed",
+            )
             results.append(result)
 
         if self.progress_callback:

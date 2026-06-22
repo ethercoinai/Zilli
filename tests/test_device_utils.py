@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from zilli.infra.device_utils import (
     DeviceType,
     detect_device,
@@ -102,8 +104,8 @@ class TestToDevice:
 
     def test_to_device_with_dict(self):
         from zilli.infra.device_utils import to_device
-        result = to_device({"key": "value"})
-        assert result == {"key": "value"}
+        with pytest.raises(ImportError):
+            to_device({"key": "value"})
 
 
 class TestAutoDetect:

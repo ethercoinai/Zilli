@@ -158,6 +158,8 @@ def run_benchmarked_distillation(
 
 
 def _mock_scores(model_name: str, cycle: DistillationCycle) -> List[float]:
+    if "post" in model_name:
+        return [cycle.avg_planner_reward]
     return [cycle.avg_executor_reward]
 
 

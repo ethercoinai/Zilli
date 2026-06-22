@@ -103,9 +103,9 @@ class TestDynamicSOTAScheduler:
 
     def test_update_bandit(self):
         s = DynamicSOTAScheduler()
-        old_a = s.beta_params[0.7]["alpha"]
+        old_a = s.beta_params["0.7"]["alpha"]
         s._update_bandit(0.7, 1.0)
-        assert s.beta_params[0.7]["alpha"] == old_a + 1.0
+        assert s.beta_params["0.7"]["alpha"] == old_a + 1.0
 
     def test_should_call_sota_random_exploration(self):
         s = DynamicSOTAScheduler()
@@ -115,6 +115,7 @@ class TestDynamicSOTAScheduler:
             "failure_rate": 0.0, "samples": 100, "success_with_sota": 0.5,
             "success_without_sota": 0.44,
         })
+        s.exploration_rate = 0.05
         calls = sum(s.should_call_sota("rnd", {"max_prob": 0.95})
                     for _ in range(1000))
         assert 20 <= calls <= 80

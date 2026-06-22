@@ -1,4 +1,5 @@
 import logging
+import threading
 from enum import Enum
 from typing import Optional
 
@@ -13,6 +14,7 @@ class DeviceType(Enum):
 
 
 _global_device: Optional[str] = None
+_global_device_lock = threading.Lock()
 
 
 def detect_device(prefer: str = "auto") -> str:
@@ -64,14 +66,17 @@ def get_device(device: Optional[str] = None) -> str:
     global _global_device
     if device:
         return detect_device(device)
-    if _global_device is None:
-        _global_device = detect_device("auto")
-    return _global_device
+    with _global_device_lock:
+        if _global_device is None:
+            _global_device = detect_device("auto")
+        return _global_device
 
 
 def set_device(device: str):
     global _global_device
-    _global_device = _validate_device(device)
+    validated = _validate_device(device)
+    with _global_device_lock:
+        _global_device = validated
     logger.info("Device set to %s", _global_device)
 
 
@@ -95,10 +100,16 @@ def get_device_count() -> int:
 
 
 def to_device(tensor, device: Optional[str] = None):
+    try:
+        import torch
+    except ImportError:
+        raise ImportError("torch is required for to_device()")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Expected torch.Tensor, got {type(tensor).__name__}")
     d = get_device(device)
     if d == "cpu":
-        return tensor.cpu() if hasattr(tensor, "cpu") else tensor
-    return tensor.to(d) if hasattr(tensor, "to") else tensor
+        return tensor.cpu()
+    return tensor.to(d)
 
 
 __all__ = [

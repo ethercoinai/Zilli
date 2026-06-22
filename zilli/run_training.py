@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import time
@@ -44,11 +45,14 @@ class TrainingExperiment:
             f.write(json.dumps(entry) + "\n")
 
     def save_checkpoint(self, tag: str, extra: Optional[Dict] = None):
+        import hashlib
+        config_str = json.dumps(self.config, sort_keys=True, default=str)
+        config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:12]
         ckpt = {
             "experiment": self.name,
             "tag": tag,
             "timestamp": time.time(),
-            "config": self.config,
+            "config_hash": config_hash,
             "epoch": len(self.metrics),
             "best_reward": self.best_reward,
             "metrics": self.metrics[-10:] if self.metrics else [],
@@ -89,7 +93,9 @@ async def run_rollout(sandbox: HermesSandbox, task: Dict) -> Dict:
     task_id = task.get("id", "unknown")
     scenario = task.get("initial_context", {})
     if scenario:
-        sandbox.context["scenario"] = scenario
+        allowed_keys = {"scenario", "task", "env", "config", "state"}
+        filtered = {k: v for k, v in scenario.items() if k in allowed_keys}
+        sandbox.context["scenario"] = copy.deepcopy(filtered)
 
     steps_taken = 0
     for step_num in range(max_steps):
@@ -125,7 +131,9 @@ async def run_rollout(sandbox: HermesSandbox, task: Dict) -> Dict:
 
 async def main(config_path: str = None, experiment_name: str = "zilli_default"):
     base = Path(__file__).parent
-    cfg_path = Path(config_path) if config_path else base / "configs" / "training_config.yaml"
+    cfg_path = Path(config_path).resolve() if config_path else base / "configs" / "training_config.yaml"
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"Config not found: {cfg_path}")
     with open(cfg_path, encoding="utf-8") as f:
         raw_config = yaml.safe_load(f)
 

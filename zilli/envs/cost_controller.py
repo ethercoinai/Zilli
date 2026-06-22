@@ -1,11 +1,18 @@
+from __future__ import annotations
+
+import fcntl
 import json
 import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from zilli.adaptive.sota_scheduler import DynamicSOTAScheduler
+from zilli.models.registry import ModelRegistry
+
+if TYPE_CHECKING:
+    from zilli.configs import ZilliConfig
 
 logger = logging.getLogger("zilli.cost_controller")
 
@@ -24,11 +31,31 @@ class BudgetSnapshot:
 
 
 class CostController:
-    def __init__(self, budget_file: Optional[str] = None,
-                 monthly_budget: float = _DEFAULT_BUDGET):
+    def __init__(
+        self,
+        budget_file: Optional[str] = None,
+        monthly_budget: float = _DEFAULT_BUDGET,
+        model_registry: Optional[ModelRegistry] = None,
+        config: Optional["ZilliConfig"] = None,
+    ):
         self._file = Path(budget_file) if budget_file else _BUDGET_FILE
-        self._scheduler = DynamicSOTAScheduler(monthly_budget_usd=monthly_budget)
+        self.model_registry = model_registry or ModelRegistry()
+        self._config = config
+
+        budget = monthly_budget
+        if config:
+            profile = config.to_model_profile()
+            budget = profile.monthly_budget_usd
+        elif model_registry:
+            budget = model_registry.profile.monthly_budget_usd
+
+        self._scheduler = DynamicSOTAScheduler(
+            monthly_budget_usd=budget,
+            model_registry=model_registry,
+            config=config,
+        )
         self._dirty = False
+        self._last_save_time = 0.0
         self._load()
 
     def _load(self):
@@ -51,7 +78,14 @@ class CostController:
             "hourly_quota": self._scheduler.hourly_quota,
             "updated_at": time.time(),
         }
-        self._file.write_text(json.dumps(data, indent=2))
+        try:
+            with open(self._file, "w") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.write(json.dumps(data, indent=2))
+                f.flush()
+                fcntl.flock(f, fcntl.LOCK_UN)
+        except OSError as e:
+            logger.warning("Failed to save budget file: %s", e)
         self._dirty = False
 
     def should_use_planner(self, task_type: str,
@@ -60,15 +94,22 @@ class CostController:
             task_type, executor_state or {"max_prob": 0.5},
         )
 
+    def _debounced_save(self):
+        now = time.time()
+        if now - self._last_save_time < 5.0:
+            return
+        self._last_save_time = now
+        self._save()
+
     def record_planner_call(self, task_type: str, success: bool):
         self._scheduler.record_call("planner", task_type, success)
         self._dirty = True
-        self._save()
+        self._debounced_save()
 
     def record_executor_call(self, task_type: str, success: bool):
         self._scheduler.record_without_sota(task_type, success)
         self._dirty = True
-        self._save()
+        self._debounced_save()
 
     def snapshot(self) -> BudgetSnapshot:
         s = self._scheduler

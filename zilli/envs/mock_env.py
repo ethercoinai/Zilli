@@ -1,15 +1,21 @@
+import asyncio
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from zilli.schema.actions import BaseAction
 
-TOOL_REGISTRY: Dict[str, Callable] = {}
+_TOOLS: Dict[str, Callable] = {}
 
 
 def register_tool(name: str):
     def wrapper(fn):
-        TOOL_REGISTRY[name] = fn
+        _TOOLS[name] = fn
         return fn
     return wrapper
+
+
+def get_tool_registry() -> Dict[str, Callable]:
+    return deepcopy(_TOOLS)
 
 
 @register_tool("memory_write")
@@ -97,6 +103,7 @@ class HermesSandbox:
         self.skill_library: List[Dict] = []
         self.current_trajectory: List[Dict] = []
         self.conversation_turns: int = 0
+        self._lock = asyncio.Lock()
         self.context: Dict = {
             "memory": {},
             "skills": {},
@@ -114,12 +121,16 @@ class HermesSandbox:
                 self.context["memory"].update(scenario["initial_memory"])
 
     async def step(self, action: Union[BaseAction, Dict[str, Any]]) -> Dict[str, Any]:
+        async with self._lock:
+            return await self._step_impl(action)
+
+    async def _step_impl(self, action: Union[BaseAction, Dict[str, Any]]) -> Dict[str, Any]:
         action_dict = action if isinstance(action, dict) else action.model_dump()
         self.current_trajectory.append(action_dict)
         self.conversation_turns += 1
 
         tool_name = action_dict.get("tool_name", "") if isinstance(action, dict) else action.tool_name
-        tool_fn = TOOL_REGISTRY.get(tool_name)
+        tool_fn = _TOOLS.get(tool_name)
 
         if tool_fn is None:
             return {"observation": {"error": f"Unknown tool: {tool_name}"}, "reward": -1.0, "done": True}
@@ -181,4 +192,4 @@ class HermesSandbox:
         }
 
 
-__all__ = ["HermesSandbox", "TOOL_REGISTRY", "register_tool"]
+__all__ = ["HermesSandbox", "get_tool_registry", "register_tool"]

@@ -18,6 +18,8 @@ def load_tasks(category: str = None) -> List[Dict[str, Any]]:
     for d in dirs:
         if d.is_dir():
             for f in sorted(d.glob("*.tasks.yaml")):
+                if f.name.startswith(".") or f.name.endswith("~") or f.name.endswith(".swp"):
+                    continue
                 with open(f, "r", encoding="utf-8") as fh:
                     data = yaml.safe_load(fh)
                     if data:

@@ -638,14 +638,15 @@ class TestDistillation:
 
     def test_bc_loss_basic(self):
         d = DistillationScheduler()
-        bc, kl = d.compute_bc_loss([0.7, 0.8], [0.85, 0.9])
+        # log-prob values corresponding to probs ~0.5, 0.55, 0.7, 0.75
+        bc, kl = d.compute_bc_loss([-0.7, -0.6], [-0.36, -0.29])
         assert bc > 0
         assert kl > 0
         assert bc >= kl
 
     def test_bc_loss_perfect_match(self):
         d = DistillationScheduler()
-        bc, kl = d.compute_bc_loss([0.9, 0.8], [0.9, 0.8])
+        bc, kl = d.compute_bc_loss([-0.11, -0.22], [-0.11, -0.22])
         assert bc > 0
         assert kl == 0.0
 
@@ -688,8 +689,8 @@ class TestDistillation:
         for i in range(20):
             d.add_sample(DistillationSample(
                 executor_action={"step": i}, planner_action={"step": i},
-                executor_log_prob=0.6 + i * 0.002,
-                planner_log_prob=0.85,
+                executor_log_prob=-0.85 + i * -0.002,
+                planner_log_prob=-0.6,
                 executor_reward=0.5,
                 planner_reward=0.9,
             ))

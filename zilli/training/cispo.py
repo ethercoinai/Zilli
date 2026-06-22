@@ -34,7 +34,7 @@ class CISPO_Trainer:  # noqa: N801
         total_loss = policy_loss + self.kl_penalty * kl - self.entropy_coef * entropy
 
         value_loss = 0.0
-        if "value" in trajectories[0] if trajectories else False:
+        if trajectories and all("value" in t for t in trajectories):
             values = np.array([t.get("value", 0.0) for t in trajectories])
             returns = self._compute_returns(advantages, values)
             value_loss = ((values - returns) ** 2).mean() * self.vf_coef
@@ -60,7 +60,8 @@ class CISPO_Trainer:  # noqa: N801
         discounted_return = 0.0
         for t in reversed(range(len(rewards))):
             discounted_return = rewards[t] + self.gamma * discounted_return * (1 - int(dones[t]))
-            returns.insert(0, discounted_return)
+            returns.append(discounted_return)
+        returns.reverse()
         return returns
 
     def compute_gae_advantages(self, rewards: List[float], values: List[float],

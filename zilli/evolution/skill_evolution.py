@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 class SkillEvolutionEngine:
     def __init__(self, reflection_model: Optional[str] = None,
                  cost_controller=None):
-        self.reflection_model = reflection_model or "claude-opus-4.6"
+        import os
+        self.reflection_model = reflection_model or os.environ.get("ZILLI_REFLECTION_MODEL")
         self.cost_controller = cost_controller
         self.max_iterations = 10
         self.evolution_strategies = [
@@ -67,7 +68,7 @@ class SkillEvolutionEngine:
         try:
             with open(skill_file, "r", encoding="utf-8") as f:
                 source = f.read()
-        except (FileNotFoundError, IOError):
+        except (FileNotFoundError, IOError, UnicodeDecodeError):
             source = ""
         functions = re.findall(r"def\s+(\w+)\s*\(.*?\):", source)
         classes = re.findall(r"class\s+(\w+)\s*[\(:]", source)

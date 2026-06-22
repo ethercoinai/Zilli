@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 import yaml
 
@@ -11,16 +14,48 @@ from zilli.tasks import TaskRunner, load_tasks
 from zilli.training.rl_trainer import RLTrainer
 from zilli.version import version
 
+if TYPE_CHECKING:
+    from zilli.configs import ZilliConfig
+
 
 def main():
     parser = argparse.ArgumentParser(description="Zilli: 面向AI自主开发的Agent工具")
     parser.add_argument("--version", action="version", version=f"zilli v{version}")
+    parser.add_argument("--zilli-config", type=str, default=None,
+                        help="Zilli 主配置文件路径 (默认: zilli.yaml, ~/.zilli.yaml, configs/model_config.yaml)")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list-tasks", help="列出所有可用任务")
     sub.add_parser("list-basic", help="列出基础验证任务")
     sub.add_parser("list-benchmark", help="列出基准评估任务")
     sub.add_parser("sandbox-test", help="测试沙箱环境")
+
+    models_parser = sub.add_parser("models", help="本地模型管理")
+    models_sub = models_parser.add_subparsers(dest="models_command")
+    models_sub.add_parser("list", help="列出已注册模型")
+    models_sub.add_parser("health", help="检查各模型健康状态")
+    models_gen = models_sub.add_parser("generate", help="使用指定角色生成")
+    models_gen.add_argument("role", type=str, choices=["planner", "executor", "reviewer"])
+    models_gen.add_argument("prompt", type=str)
+
+    route_parser = sub.add_parser("route", help="混合路由：规划→执行→审查")
+    route_parser.add_argument("request", type=str, help="用户请求")
+    route_parser.add_argument("--industry", type=str, default="",
+                              choices=["", "legal", "medical", "financial", "education"],
+                              help="行业上下文")
+    route_parser.add_argument("--full-route", action="store_true", help="强制完整三阶段路由")
+    route_parser.add_argument("--verbose", action="store_true", help="显示中间结果")
+
+    industry_parser = sub.add_parser("industry", help="行业工作流")
+    industry_sub = industry_parser.add_subparsers(dest="industry_command")
+    industry_sub.add_parser("list", help="列出支持的行业")
+    industry_run = industry_sub.add_parser("run", help="运行行业工作流")
+    industry_run.add_argument("industry", type=str,
+                              choices=["legal", "medical", "financial", "education"])
+    industry_run.add_argument("request", type=str, help="用户请求")
+    industry_run.add_argument("--tenant", type=str, default="default", help="租户ID")
+    industry_run.add_argument("--full-route", action="store_true", help="强制完整三阶段路由")
+    industry_run.add_argument("--no-sanitize", action="store_true", help="禁用PII脱敏")
 
     eval_parser = sub.add_parser("evaluate", help="在沙箱中评估任务")
     eval_parser.add_argument("task_id", type=str, nargs="?", help="任务ID")
@@ -31,6 +66,7 @@ def main():
     train_parser.add_argument("--config", type=str, default=None, help="训练配置路径")
     train_parser.add_argument("--cost-aware", action="store_true", help="启用成本控制调度")
     train_parser.add_argument("--budget", type=float, default=None, help="月度预算上限（美元）")
+    train_parser.add_argument("--dry-run", action="store_true", help="模拟运行，不执行实际训练")
 
     distill_parser = sub.add_parser("distill", help="运行蒸馏循环")
     distill_parser.add_argument("--config", type=str, default=None, help="蒸馏配置YAML路径")
@@ -45,10 +81,23 @@ def main():
     cost_sub.add_parser("status", help="显示预算状态")
     cost_sub.add_parser("reset-month", help="重置月度预算")
 
+    serve_parser = sub.add_parser("serve", help="启动 API 服务器")
+    serve_parser.add_argument("--host", type=str, default="127.0.0.1", help="监听地址")
+    serve_parser.add_argument("--port", type=int, default=8900, help="监听端口")
+
     args = parser.parse_args()
 
-    if args.command == "cost":
-        _run_cost(args.cost_command)
+    from zilli.configs import load_config
+    zilli_config = load_config(Path(args.zilli_config)) if args.zilli_config else None
+
+    if args.command == "models":
+        _run_models(args.models_command, args, zilli_config)
+    elif args.command == "route":
+        _run_route(args, zilli_config)
+    elif args.command == "industry":
+        _run_industry(args, zilli_config)
+    elif args.command == "cost":
+        _run_cost(args.cost_command, zilli_config)
     elif args.command == "list-tasks":
         tasks = load_tasks()
         for t in tasks:
@@ -64,10 +113,10 @@ def main():
         _run_sandbox_test()
 
     elif args.command == "evaluate":
-        _run_evaluation(task_id=args.task_id, cost_aware=args.cost_aware, budget=args.budget)
+        _run_evaluation(task_id=args.task_id, cost_aware=args.cost_aware, budget=args.budget, zilli_config=zilli_config)
 
     elif args.command == "train":
-        _run_train(args.config, cost_aware=args.cost_aware, budget=args.budget)
+        _run_train(args.config, cost_aware=args.cost_aware, budget=args.budget, zilli_config=zilli_config)
 
     elif args.command == "distill":
         _run_distill(
@@ -78,14 +127,202 @@ def main():
             log_dir=args.log_dir or "",
         )
 
+    elif args.command == "serve":
+        from zilli.server.app import run_server
+        run_server(
+            host=args.host,
+            port=args.port,
+            config=zilli_config,
+            config_path=Path(args.zilli_config) if args.zilli_config else None,
+        )
+
     else:
         parser.print_help()
 
 
-def _run_cost(cmd: str = None):
+def _run_models(cmd: str = None, args: argparse.Namespace = None,
+                zilli_config: Optional["ZilliConfig"] = None):
+    from zilli.models import ModelRegistry, ModelRole
+
+    registry = ModelRegistry(config=zilli_config) if zilli_config else ModelRegistry()
+
+    if cmd == "list":
+        models = registry.list_models()
+        if not models:
+            print("No models registered.")
+            return
+        sep = "=" * 60
+        print(sep)
+        print(f"  {'Name':12s} {'Role':12s} {'Backend':10s} {'Model ID':20s} {'Alive':6s}")
+        print(sep)
+        for m in models:
+            alive = "[OK]" if m["alive"] else "[FAIL]"
+            print(f"  {m['name']:12s} {m['role']:12s} {m['backend']:10s} {m['model_id']:20s} {alive:6s}")
+        print(sep)
+
+    elif cmd == "health":
+        import asyncio
+
+        async def _health():
+            print("Checking model health...")
+            for cfg in registry.profile.models:
+                backend = registry.get_model(cfg.name)
+                if backend is None:
+                    print(f"  {cfg.name:12s} ✘ backend not loaded")
+                    continue
+                ok = await backend.health_check()
+                status = "[healthy]" if ok else "[unreachable]"
+                print(f"  {cfg.name:12s} {status}  ({cfg.model_id} @ {cfg.base_url})")
+
+        asyncio.run(_health())
+
+    elif cmd == "generate":
+        role_str = args.role if args else "planner"
+        prompt = args.prompt if args else ""
+        role = ModelRole(role_str)
+
+        import asyncio
+
+        async def _gen():
+            result = await registry.generate(role, prompt)
+            if result.error:
+                print(f"Error: {result.error}")
+            else:
+                print(f"[{role_str.upper()}] {result.text}")
+                print(f"\n--- stats: {result.tokens_in} in, {result.tokens_out} out, "
+                      f"{result.duration_ms:.0f}ms ---")
+
+        asyncio.run(_gen())
+    else:
+        print("Usage: zilli models {list|health|generate <role> <prompt>}")
+
+
+def _run_route(args: argparse.Namespace,
+               zilli_config: Optional["ZilliConfig"] = None):
+    import asyncio
+
+    from zilli.models import ModelRegistry
+    from zilli.routing import LocalHybridRouter, RouteClassifier
+
+    async def route():
+        registry = ModelRegistry(config=zilli_config)
+        classifier = RouteClassifier(model_registry=registry, config=zilli_config)
+        router = LocalHybridRouter(registry, classifier, config=zilli_config)
+
+        result = await router.run(
+            request=args.request,
+            industry=args.industry,
+            force_full_route=args.full_route,
+        )
+
+        sep = "=" * 60
+        print(sep)
+        print(f"  Route: {result.route_type.value}")
+        print(f"  Decision: {result.decision.reason}")
+        if result.error:
+            print(f"  Error: {result.error}")
+        print(sep)
+        print()
+
+        if args.verbose and result.planner_result:
+            print("[PLANNER OUTPUT]")
+            print(result.planner_result[:500])
+            print()
+
+        if args.verbose and result.executor_result:
+            print("[EXECUTOR OUTPUT]")
+            print(result.executor_result[:500])
+            print()
+
+        print("[FINAL OUTPUT]")
+        text = result.final_text or ""
+        if len(text) > 2000:
+            print(text[:2000])
+            print("... [truncated to 2000 chars]")
+        else:
+            print(text)
+
+        print()
+        print(f"--- {result.total_duration_ms:.0f}ms ---")
+
+    asyncio.run(route())
+
+
+def _run_industry(args: argparse.Namespace,
+                  zilli_config: Optional["ZilliConfig"] = None):
+    import asyncio
+
+    from zilli.audit import AuditLogger
+    from zilli.industry import IndustryType, WorkflowRegistry
+    from zilli.models import ModelRegistry
+
+    if args.industry_command == "list":
+        registry = WorkflowRegistry(config=zilli_config)
+        industries = registry.list_industries()
+        if not industries:
+            print("No industries registered.")
+            return
+        sep = "=" * 60
+        print(sep)
+        print(f"  {'Industry':12s} {'Access':14s} {'Audit':6s} {'Retention':10s}")
+        print(sep)
+        for ind in industries:
+            audit = "[OK]" if ind["require_audit"] else "[NO]"
+            print(f"  {ind['id']:12s} {ind['access_level']:14s} {audit:6s} {ind.get('retention_days', 90):10d}")
+        print(sep)
+        for ind in industries:
+            print(f"\n  {ind['id'].upper()} compliance rules:")
+            for rule in ind["compliance_rules"]:
+                print(f"    • {rule}")
+        return
+
+    if args.industry_command == "run":
+        async def _run():
+            industry = IndustryType(args.industry)
+            model_registry = ModelRegistry(config=zilli_config)
+            audit_logger = AuditLogger(config=zilli_config)
+            registry = WorkflowRegistry(
+                model_registry=model_registry,
+                audit_logger=audit_logger,
+                config=zilli_config,
+            )
+
+            result = await registry.run(
+                request=args.request,
+                industry=industry,
+                tenant_id=args.tenant,
+                force_full_route=args.full_route,
+                sanitize=not args.no_sanitize,
+            )
+
+            sep = "=" * 60
+            print(sep)
+            print(f"  Industry: {args.industry}")
+            print(f"  Tenant:   {args.tenant}")
+            print(f"  Route:    {result.route_type.value}")
+            print(f"  Decision: {result.decision.reason}")
+            if result.error:
+                print(f"  Error:    {result.error}")
+            print(sep)
+            print()
+            print("[OUTPUT]")
+            text = result.final_text or ""
+            if len(text) > 2000:
+                print(text[:2000])
+                print("... [truncated to 2000 chars]")
+            else:
+                print(text)
+            print()
+            print(f"--- {result.total_duration_ms:.0f}ms ---")
+
+        asyncio.run(_run())
+
+
+def _run_cost(cmd: str = None,
+              zilli_config: Optional["ZilliConfig"] = None):
     from zilli.envs.cost_controller import CostController
 
-    cc = CostController()
+    cc = CostController(config=zilli_config) if zilli_config else CostController()
     if cmd == "status":
         snap = cc.snapshot()
         sep = "=" * 40
@@ -155,7 +392,8 @@ def _run_sandbox_test():
     asyncio.run(test())
 
 
-def _run_evaluation(task_id: str = None, cost_aware: bool = False, budget: float = None):
+def _run_evaluation(task_id: str = None, cost_aware: bool = False, budget: float = None,
+                    zilli_config: Optional["ZilliConfig"] = None):
     import asyncio
 
     from zilli.envs import CostController, HermesSandbox
@@ -168,7 +406,8 @@ def _run_evaluation(task_id: str = None, cost_aware: bool = False, budget: float
             print(f"Task not found: {task_id}")
             return
 
-    cc = CostController(monthly_budget=budget or 500.0) if cost_aware else None
+    cc = (CostController(monthly_budget=budget or 500.0, config=zilli_config)
+          if cost_aware else None)
     if cc:
         print(f"Cost-aware mode: ${cc.scheduler.monthly_budget:.0f} monthly budget")
 
@@ -241,7 +480,8 @@ def _run_evaluation(task_id: str = None, cost_aware: bool = False, budget: float
     asyncio.run(evaluate())
 
 
-def _run_train(config_path: str = None, cost_aware: bool = False, budget: float = None):
+def _run_train(config_path: str = None, cost_aware: bool = False, budget: float = None,
+               zilli_config: Optional["ZilliConfig"] = None):
     config = {
         "algorithm": "CISPO",
         "clip_range": 0.2,
@@ -251,6 +491,10 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
     }
     if config_path:
         p = Path(config_path)
+        if ".." in str(p):
+            print("Path traversal detected in config path")
+            return
+        p = p.resolve()
         if p.exists():
             with open(p) as f:
                 config.update(yaml.safe_load(f).get("training", {}))
@@ -261,7 +505,7 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
     cc = None
     if cost_aware:
         from zilli.envs import CostController
-        cc = CostController(monthly_budget=budget or 500.0)
+        cc = CostController(monthly_budget=budget or 500.0, config=zilli_config)
         print(f"Cost-aware training: ${cc.scheduler.monthly_budget:.0f} monthly budget")
 
     import numpy as np
@@ -311,6 +555,8 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
         print(f"    Executor calls: {executor_calls}")
         print(f"    Remaining budget: ${snap.remaining_budget:.2f}")
 
+    print("IMPORTANT: This trainer uses dummy/generated data for simulation. "
+          "No real model was trained. Use --dry-run to explicitly acknowledge this.")
     print("Training test complete.")
 
 
@@ -322,6 +568,10 @@ def _run_distill(config_path: str = None, num_samples: int = 100,
 
     if config_path:
         p = Path(config_path)
+        if ".." in str(p):
+            print("Path traversal detected in config path")
+            return
+        p = p.resolve()
         if p.exists():
             with open(p) as f:
                 config = yaml.safe_load(f).get("distillation", {})
@@ -396,6 +646,10 @@ def _run_ab_test_cli(scheduler, samples, ab_test_path: str, log_dir: str):
     )
 
     p = Path(ab_test_path)
+    if ".." in str(p):
+        print("Path traversal detected in AB test config path")
+        return
+    p = p.resolve()
     if not p.exists():
         print(f"AB test config not found: {ab_test_path}")
         return

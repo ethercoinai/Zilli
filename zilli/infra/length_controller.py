@@ -43,7 +43,7 @@ class LengthElasticController:
         self.parallel_mode = "dp"
         self.dispatcher = LayoutAwareDispatcher()
         self._history: deque = deque(maxlen=history_size)
-        self._cap_history: List[int] = []
+        self._cap_history: deque = deque(maxlen=1000)
         self._mode_changes: int = 0
         self._growth_factor = 1.2
         self._shrink_factor = 0.85

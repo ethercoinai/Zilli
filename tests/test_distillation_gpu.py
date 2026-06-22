@@ -91,6 +91,12 @@ class MockTorchModule:
         return MockTorchTensor(0.0)
 
     @staticmethod
+    def exp(x):
+        if isinstance(x, MockTorchTensor):
+            return MockTorchTensor(0.5)
+        return MockTorchTensor(0.0)
+
+    @staticmethod
     def log(x):
         if isinstance(x, MockTorchTensor):
             return MockTorchTensor(-1.0)

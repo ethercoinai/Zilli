@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zilli-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  zilli:
+    build: .
+    container_name: zilli-api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "8900:8900"
+    volumes:
+      - zilli_data:/app/.zilli_cache
+      - zilli_audit:/app/audit_logs
+      - ./zilli.yaml:/app/zilli.yaml:ro
+    environment:
+      - ZILLI_CONFIG_PATH=/app/zilli.yaml
+    command: ["serve", "--host", "0.0.0.0", "--port", "8900"]
+
+volumes:
+  ollama_data:
+  zilli_data:
+  zilli_audit:

@@ -42,7 +42,7 @@ class VerifiableReward:
         errors = sum(
             1 for t in trajectory
             if isinstance(t.get("observation", {}), dict)
-            and not t["observation"].get("success", True)
+            and t["observation"].get("success") is not True
         )
         reward -= self.error_penalty * errors
 
@@ -61,13 +61,14 @@ class VerifiableReward:
                                 template: List[Dict]) -> float:
         if not template:
             return 1.0
-        matched = 0
+        matched = 0.0
         for i, tmpl_step in enumerate(template):
+            weight = tmpl_step.get("reward_weight", 1.0)
             if i < len(trajectory):
                 actual_tool = trajectory[i].get("action", {}).get("tool_name", "")
                 expected_tool = tmpl_step.get("tool", "")
                 if actual_tool == expected_tool:
-                    matched += tmpl_step.get("reward_weight", 1.0)
+                    matched += weight
         total_weight = sum(s.get("reward_weight", 1.0) for s in template)
         return matched / total_weight if total_weight > 0 else 0.0
 
@@ -99,7 +100,7 @@ class VerifiableReward:
 
     def _validate_action_schema(self, action: BaseAction) -> bool:
         try:
-            _ = action.model_dump()
+            _ = action.model_validate(action.model_dump())
             return True
         except Exception:
             return False

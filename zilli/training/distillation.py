@@ -88,20 +88,22 @@ class DistillationScheduler:
         self._buffer.extend(samples)
         self._total_samples += len(samples)
 
-    def compute_bc_loss(self, executor_probs: List[float],
-                        planner_probs: List[float]) -> float:
+    def compute_bc_loss(self, executor_log_probs: List[float],
+                        planner_log_probs: List[float]) -> float:
         bc = 0.0
         kl = 0.0
-        n = len(executor_probs)
+        n = len(executor_log_probs)
         if n == 0:
             return 0.0, 0.0
         for i in range(n):
-            ep = max(min(executor_probs[i], 1.0 - 1e-10), 1e-10)
-            pp = max(min(planner_probs[i], 1.0 - 1e-10), 1e-10)
+            ep = math.exp(min(max(executor_log_probs[i], -10), 0))
+            pp = math.exp(min(max(planner_log_probs[i], -10), 0))
+            ep = max(min(ep, 1.0 - 1e-10), 1e-10)
+            pp = max(min(pp, 1.0 - 1e-10), 1e-10)
             bc += -math.log(ep) * pp
             kl += pp * (math.log(pp) - math.log(ep))
         bc /= n
-        kl /= n
+        kl = max(0.0, kl / n)
         return bc + self.kl_beta * kl, kl
 
     def compute_rl_loss(self, executor_rewards: List[float],
@@ -232,7 +234,7 @@ class DistillationScheduler:
             return False
         if len(self._buffer) >= self.lora_threshold:
             return True
-        if self._cycles:
+        if self._cycles and self._cycles[-1].end_time is not None:
             elapsed = time.time() - self._cycles[-1].end_time
             return elapsed >= self.distill_interval * 3600
         return False
@@ -264,14 +266,16 @@ class DistillationScheduler:
         try:
             import torch
             device = get_device()
-            exec_probs = torch.tensor(
-                [max(min(s.executor_log_prob, 1 - 1e-10), 1e-10) for s in samples],
-                device=device,
+            exec_log_probs = torch.tensor(
+                [s.executor_log_prob for s in samples], device=device,
             )
-            plan_probs = torch.tensor(
-                [max(min(s.planner_log_prob, 1 - 1e-10), 1e-10) for s in samples],
-                device=device,
+            plan_log_probs = torch.tensor(
+                [s.planner_log_prob for s in samples], device=device,
             )
+            exec_probs = torch.exp(torch.clamp(exec_log_probs, max=0))
+            plan_probs = torch.exp(torch.clamp(plan_log_probs, max=0))
+            exec_probs = torch.clamp(exec_probs, min=1e-10, max=1 - 1e-10)
+            plan_probs = torch.clamp(plan_probs, min=1e-10, max=1 - 1e-10)
             exec_rew = torch.tensor([s.executor_reward for s in samples], device=device)
             plan_rew = torch.tensor([s.planner_reward for s in samples], device=device)
 

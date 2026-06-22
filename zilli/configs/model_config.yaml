@@ -1,0 +1,71 @@
+# Zilli Configuration
+# For data-sensitive enterprises — all models run locally.
+# Backend options: ollama, vllm, llamacpp
+
+version: "0.2.0"
+
+models:
+  monthly_budget_usd: 500.0
+  fallback_strategy: lower_tier  # lower_tier | cache | error
+
+  models:
+    - name: planner
+      backend: ollama
+      model_id: qwen3:27b
+      role: planner
+      base_url: http://127.0.0.1:11434
+      max_tokens: 4096
+      temperature: 0.2
+      num_ctx: 8192
+      cost_per_call: 0.0
+
+    - name: executor
+      backend: ollama
+      model_id: qwen3:7b
+      role: executor
+      base_url: http://127.0.0.1:11434
+      max_tokens: 4096
+      temperature: 0.1
+      num_ctx: 4096
+      cost_per_call: 0.0
+
+    - name: reviewer
+      backend: ollama
+      model_id: qwen3:27b
+      role: reviewer
+      base_url: http://127.0.0.1:11434
+      max_tokens: 2048
+      temperature: 0.1
+      num_ctx: 8192
+      cost_per_call: 0.0
+
+routing:
+  classifier:
+    long_request_threshold: 500
+    rules:
+      - pattern: "(?i)(复杂|分析|设计|规划|审计|合规|诊断|方案|架构)"
+        route: full_route
+      - pattern: "(?i)(complex|analy|design|plan|audit|compliance|diagnos|architect|strateg)"
+        route: full_route
+      - pattern: "(?i)(你好|hello|hi|help|简单|simple|basic)"
+        route: fast_lane
+
+security:
+  isolation_default_policy:
+    access_level: internal
+    allowed_roles: [planner, executor, reviewer]
+    max_input_length: 32768
+    require_sanitization: true
+    audit_required: true
+    retention_days: 90
+
+audit:
+  log_dir: "./audit_logs"
+  sanitize: true
+
+training:
+  algorithm: CISPO
+  clip_range: 0.2
+  kl_penalty: 0.01
+  is_weight_cap: 5.0
+  gamma: 0.99

@@ -34,10 +34,27 @@ class SkillUpdateAction(BaseAction):
     code: str = Field(..., description="更新后的技能代码")
 
 
+_BLOCKED_COMMANDS = [
+    "rm -rf /", "rm -rf ~", "mkfs", "dd if=", ":(){", "fork()",
+    "> /dev/sda", "chmod 777 /", "wget ", "curl ",
+]
+
+def _validate_command(command: str) -> str:
+    for blocked in _BLOCKED_COMMANDS:
+        if blocked in command.lower():
+            raise ValueError(f"Command blocked: contains disallowed pattern '{blocked}'")
+    if len(command) > 4096:
+        raise ValueError(f"Command too long ({len(command)} chars, max 4096)")
+    return command
+
+
 class BashRunAction(BaseAction):
     tool_name: str = "bash_run"
     command: str = Field(..., description="要执行的bash命令")
     workdir: Optional[str] = Field(None, description="工作目录")
+
+    def model_post_init(self, _context):
+        _validate_command(self.command)
 
 
 class FileReadAction(BaseAction):

@@ -43,6 +43,7 @@ class ContinuousLearner:
 
     async def run(self):
         self._running = True
+        consecutive_errors = 0
         logger.info(
             "ContinuousLearner started, interval=%dh, data_dir=%s, sft_threshold=%d",
             self.interval, self.data_dir, self.sft_threshold,
@@ -54,29 +55,43 @@ class ContinuousLearner:
                 start_time=time.time(),
             )
 
-            new_trajectories = await self._collect_production_trajectories()
-            for traj in new_trajectories:
-                self.store.add_trajectory(traj.get("trajectory", []), traj.get("reward", 0.0))
-            self._total_production_trajs += len(new_trajectories)
-            cycle.new_trajectories = len(new_trajectories)
-            cycle.total_trajectories = self._total_production_trajs
+            try:
+                new_trajectories, processed_files = await self._collect_production_trajectories()
+                for traj in new_trajectories:
+                    self.store.add_trajectory(traj.get("trajectory", []), traj.get("reward", 0.0))
+                self._total_production_trajs += len(new_trajectories)
+                cycle.new_trajectories = len(new_trajectories)
+                cycle.total_trajectories = self._total_production_trajs
 
-            if self._should_trigger_sft():
-                result = await self._trigger_online_sft()
-                cycle.sft_triggered = True
-                cycle.sft_metrics = result
+                if self._should_trigger_sft():
+                    result = await self._trigger_online_sft()
+                    cycle.sft_triggered = True
+                    cycle.sft_metrics = result
 
-            self._archive_processed_data(new_trajectories)
+                self._archive_processed_data(processed_files)
+                consecutive_errors = 0
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error("Cycle %d failed: %s", self._cycle_count, e, exc_info=True)
+                cycle.sft_metrics = {"error": str(e)}
+
             self._cycles.append(cycle)
             cycle.end_time = time.time()
 
             logger.info(
                 "Cycle %d: collected %d trajectories (total: %d), sft=%s, elapsed=%.1fs",
-                self._cycle_count, len(new_trajectories), self._total_production_trajs,
+                self._cycle_count, cycle.new_trajectories, self._total_production_trajs,
                 cycle.sft_triggered, cycle.end_time - cycle.start_time,
             )
 
-            await asyncio.sleep(self.interval * 3600)
+            if consecutive_errors > 0:
+                await self._retry_backoff(consecutive_errors)
+            else:
+                await asyncio.sleep(self.interval * 3600)
+
+    async def _retry_backoff(self, attempt: int) -> None:
+        delay = min(60 * (2 ** attempt), 3600)
+        await asyncio.sleep(delay)
 
     async def stop(self):
         self._running = False
@@ -85,24 +100,30 @@ class ContinuousLearner:
             self._cycle_count, self._total_production_trajs,
         )
 
-    async def _collect_production_trajectories(self) -> List[Dict]:
+    async def _collect_production_trajectories(self) -> tuple[list[Dict], list[Path]]:
         if not self.data_dir.exists():
             self.data_dir.mkdir(parents=True, exist_ok=True)
-            return []
+            return [], []
         trajectories = []
+        processed_files: list[Path] = []
+
+        def _read_file(f: Path):
+            with open(f, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+
         for f in sorted(self.data_dir.glob("*.json")):
             try:
-                with open(f, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
-                    if isinstance(data, list):
-                        trajectories.extend(data)
-                    else:
-                        trajectories.append(data)
+                data = await asyncio.to_thread(_read_file, f)
+                if isinstance(data, list):
+                    trajectories.extend(data)
+                else:
+                    trajectories.append(data)
+                processed_files.append(f)
                 self._recent_errors.append(("ok", f.name))
             except (json.JSONDecodeError, IOError) as e:
                 logger.warning("Failed to read %s: %s", f, e)
                 self._recent_errors.append(("error", f.name))
-        return trajectories
+        return trajectories, processed_files
 
     def _should_trigger_sft(self) -> bool:
         if not self.sft_callback:
@@ -125,6 +146,8 @@ class ContinuousLearner:
         if self.sft_callback:
             try:
                 result = self.sft_callback(store_stats)
+                if hasattr(result, "__await__"):
+                    result = await result
                 if result:
                     metrics.update(result)
             except Exception as e:
@@ -143,11 +166,13 @@ class ContinuousLearner:
 
         return metrics
 
-    def _archive_processed_data(self, trajectories: List[Dict]):
-        if not trajectories:
+    def _archive_processed_data(self, processed_files: list[Path]):
+        if not processed_files:
             return
         self.archive_dir.mkdir(parents=True, exist_ok=True)
-        for f in self.data_dir.glob("*.json"):
+        for f in processed_files:
+            if not f.exists():
+                continue
             dest = self.archive_dir / f.name
             try:
                 shutil.move(str(f), str(dest))

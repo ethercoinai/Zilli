@@ -10,11 +10,19 @@ class TrajectoryStore:
         self.golden_trajectories: List[Dict] = []
         self.failure_trajectories: List[Dict] = []
         self.rollout_buffer: List[Dict] = []
-        self._priorities: List[float] = []
         self.cleaner = TrajectoryCleaner(self.config.get("cleaner_config"))
         self.max_size = self.config.get("max_size", 10000)
         self.min_reward_for_golden = self.config.get("min_reward_for_golden", 0.8)
         self.max_reward_for_failure = self.config.get("max_reward_for_failure", 0.3)
+
+    def _entry_priority(self, entry: Dict) -> float:
+        t = entry.get("type", "neutral")
+        r = entry.get("reward", 0.0)
+        if t == "golden":
+            return r
+        elif t == "failure":
+            return 1.0 - r
+        return 0.5
 
     def add_trajectory(self, trajectory: List[Dict], final_reward: float):
         if len(trajectory) < 2:
@@ -29,16 +37,13 @@ class TrajectoryStore:
         if final_reward >= self.min_reward_for_golden:
             entry["type"] = "golden"
             self.golden_trajectories.append(entry)
-            self._priorities.append(final_reward)
         elif final_reward <= self.max_reward_for_failure:
             entry["type"] = "failure"
             entry["error_summary"] = self._summarize_error(trajectory)
             self.failure_trajectories.append(entry)
-            self._priorities.append(1.0 - final_reward)
         else:
             entry["type"] = "neutral"
             self.rollout_buffer.append(entry)
-            self._priorities.append(0.5)
 
         self._enforce_max_size()
 
@@ -49,7 +54,7 @@ class TrajectoryStore:
 
         sampled = []
 
-        if use_priority and self._priorities:
+        if use_priority:
             sampled = self._priority_sample(batch_size)
         else:
             if self.golden_trajectories and n_golden > 0:
@@ -139,13 +144,6 @@ class TrajectoryStore:
             return "; ".join(errors[:3])
         return "Unknown failure"
 
-    def _trim_priorities(self):
-        total = (len(self.golden_trajectories) +
-                 len(self.failure_trajectories) +
-                 len(self.rollout_buffer))
-        if len(self._priorities) > total:
-            self._priorities = self._priorities[-total:]
-
     def _enforce_max_size(self):
         total = (len(self.golden_trajectories) +
                  len(self.failure_trajectories) +
@@ -158,14 +156,13 @@ class TrajectoryStore:
                 self.failure_trajectories = self.failure_trajectories[excess:]
             elif self.golden_trajectories:
                 self.golden_trajectories = self.golden_trajectories[excess:]
-            self._trim_priorities()
 
     def _priority_sample(self, batch_size: int) -> List[Dict]:
-        all_entries = self.golden_trajectories + self.failure_trajectories
+        all_entries = self.golden_trajectories + self.failure_trajectories + self.rollout_buffer
         if not all_entries:
             return []
 
-        priorities = self._priorities[:len(all_entries)]
+        priorities = [self._entry_priority(e) for e in all_entries]
         total_p = sum(priorities)
         if total_p == 0:
             return random.choices(all_entries, k=min(batch_size, len(all_entries)))
