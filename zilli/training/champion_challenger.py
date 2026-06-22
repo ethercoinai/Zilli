@@ -187,8 +187,10 @@ class ChampionChallenger:
 
     def _bootstrap_p(self, a: List[float], b: List[float],
                      n_iter: int = 10000) -> float:
-        combined = a + b
         n_a, n_b = len(a), len(b)
+        if n_a == 0 or n_b == 0:
+            return 1.0
+        combined = a + b
         observed = sum(b) / n_b - sum(a) / n_a
         count_extreme = 0
 
@@ -213,8 +215,8 @@ class ChampionChallenger:
         if len(champion_matches) < self.warmup_rounds:
             return False
 
-        recent = [m for m in self._matches[-5:]
-                  if m.challenger == match.challenger]
+        recent = [m for m in self._matches
+                  if m.challenger == match.challenger][-5:]
         wins = sum(1 for m in recent if m.winner == match.challenger)
         if len(recent) >= 2 and wins < len(recent) * 0.6:
             return False
@@ -226,6 +228,13 @@ class ChampionChallenger:
         challenger = self._models.get(challenger_name)
         if challenger is None:
             return
+
+        if self.deploy_callback:
+            try:
+                self.deploy_callback(challenger_name)
+            except Exception as e:
+                logger.error("Deploy callback failed, promotion aborted: %s", e)
+                return
 
         if old_champion and old_champion in self._models:
             self._models[old_champion].status = ArenaStatus.RETIRED
@@ -240,12 +249,6 @@ class ChampionChallenger:
             "Champion promoted: %s (replaces %s) | deployments=%d",
             challenger_name, old_champion, self._deployments,
         )
-
-        if self.deploy_callback:
-            try:
-                self.deploy_callback(challenger_name)
-            except Exception as e:
-                logger.error("Deploy callback failed: %s", e)
 
     def rollback(self) -> Optional[str]:
         if not self._matches:
@@ -299,6 +302,11 @@ class ChampionChallenger:
                 1 for m in self._matches
                 if m.winner == name
             )
+            draws = total_matches - wins - sum(
+                1 for m in self._matches
+                if m.winner is not None and m.winner != name
+                and (m.champion == name or m.challenger == name)
+            )
             recent_scores = list(self._recent_scores.get(name, []))
             entries.append({
                 "name": name,
@@ -307,6 +315,7 @@ class ChampionChallenger:
                 "avg_score": model.metrics.get("avg_score", 0.0),
                 "total_matches": total_matches,
                 "wins": wins,
+                "draws": draws,
                 "win_rate": round(wins / total_matches, 3) if total_matches > 0 else 0.0,
                 "recent_scores": recent_scores[-10:],
                 "deployed_at": model.deployed_at,

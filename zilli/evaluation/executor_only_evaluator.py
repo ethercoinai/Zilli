@@ -27,7 +27,7 @@ class ExecutorOnlyEvaluator:
             start = time.time()
             await self.sandbox.reset()
             try:
-                response, token_count, _ = self.model.generate(task["prompt"])
+                response, token_count, _ = await self.model.generate(task["prompt"])
                 final_state = await self.sandbox.execute(response)
                 success = task["verification_fn"](final_state)
                 results.append(EvalResult(
@@ -49,8 +49,13 @@ class ExecutorOnlyEvaluator:
                        repeat_per_task: int = 10) -> Dict[str, Any]:
         all_results = []
         end_time = time.time() + duration_hours * 3600
+        max_iterations = 10000
+        iteration = 0
 
-        while time.time() < end_time:
+        while time.time() < end_time and iteration < max_iterations:
+            iteration += 1
+            if not self.tasks:
+                break
             for task in self.tasks:
                 res = await self.run_single_task(task, repeat=repeat_per_task)
                 all_results.extend(res)

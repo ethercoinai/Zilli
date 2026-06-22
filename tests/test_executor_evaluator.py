@@ -24,7 +24,7 @@ class TestExecutorOnlyEvaluator:
     @pytest.fixture
     def mock_model(self):
         m = MagicMock()
-        m.generate.return_value = ("response text", 100, {})
+        m.generate = AsyncMock(return_value=("response text", 100, {}))
         return m
 
     @pytest.fixture

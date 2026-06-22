@@ -24,6 +24,7 @@ class IndustryRequest(BaseModel):
     request: str = Field(..., min_length=1, max_length=65536)
     force_full_route: bool = False
     sanitize: bool = True
+    tenant_id: str = "default"
 
 
 class IndustryResponse(BaseModel):
@@ -64,6 +65,7 @@ class HealthResponse(BaseModel):
     version: str
     models_configured: int
     models_alive: int
+    model_health: list[ModelHealth] = []
 
 
 # ── OpenAI-compatible schemas ─────────────────────────────────────────
@@ -79,6 +81,9 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1)
     max_tokens: int = 2048
     temperature: float = 0.1
+    top_p: float = 0.9
+    stop: list[str] | None = None
+    n: int = 1
     stream: bool = False
 
 

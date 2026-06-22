@@ -133,6 +133,11 @@ class WorkflowRegistry:
         self.audit_logger = audit_logger or AuditLogger(log_dir=log_dir, sanitize=sanitize)
 
         self.data_isolation = data_isolation or DataIsolation()
+        self._classifier = RouteClassifier(model_registry=self.model_registry)
+        self._router = LocalHybridRouter(
+            registry=self.model_registry,
+            classifier=self._classifier,
+        )
 
     def get_workflow(self, industry: IndustryType) -> IndustryWorkflow:
         return self._WORKFLOWS.get(industry)
@@ -174,11 +179,8 @@ class WorkflowRegistry:
         if sanitize and workflow.require_sanitization:
             processed_request = workflow.sanitize_input(request)
 
-        classifier = RouteClassifier(model_registry=self.model_registry)
-        router = LocalHybridRouter(
-            registry=self.model_registry,
-            classifier=classifier,
-        )
+        classifier = self._classifier
+        router = self._router
 
         result = await router.run(
             request=processed_request,
@@ -187,6 +189,6 @@ class WorkflowRegistry:
         )
 
         if workflow.require_audit:
-            workflow.audit_call(self.audit_logger, request, result, tenant_id)
+            workflow.audit_call(self.audit_logger, processed_request, result, tenant_id)
 
         return result

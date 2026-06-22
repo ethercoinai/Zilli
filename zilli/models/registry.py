@@ -70,11 +70,22 @@ class ModelRegistry:
         return self._backends.get(name)
 
     async def get_model_for_role(self, role: ModelRole) -> Optional[ModelBackend]:
+        import asyncio
+
         chain = self._fallback_chain.get(role, [])
-        for name in chain:
+        if not chain:
+            return None
+
+        async def _check(name: str) -> Optional[ModelBackend]:
             backend = self._backends.get(name)
             if backend and await backend.health_check():
                 return backend
+            return None
+
+        results = await asyncio.gather(*[_check(n) for n in chain], return_exceptions=True)
+        for r in results:
+            if isinstance(r, ModelBackend):
+                return r
         return None
 
     async def generate(

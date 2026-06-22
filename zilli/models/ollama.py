@@ -22,9 +22,12 @@ class OllamaBackend(ModelBackend):
         self._chat_url = f"{self.base_url}/api/chat"
         self._client: Optional["httpx.AsyncClient"] = None
 
-    def _get_client(self) -> "httpx.AsyncClient":
+    async def _ensure_client(self) -> "httpx.AsyncClient":
         if self._client is None and HAS_HTTPX:
-            self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0))
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(300.0),
+                limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
+            )
         return self._client  # type: ignore
 
     async def generate(
@@ -40,14 +43,7 @@ class OllamaBackend(ModelBackend):
                 error="httpx not installed. Install with: pip install httpx",
             )
 
-        client = self._get_client()
-        if client is None:
-            return GenerationResult(
-                text="",
-                model_name=self.model_id,
-                error="Failed to create HTTP client",
-            )
-
+        client = await self._ensure_client()
         payload = {
             "model": self.model_id,
             "prompt": prompt,
@@ -60,7 +56,7 @@ class OllamaBackend(ModelBackend):
 
         start = time.monotonic()
         try:
-            response = await client.post(self._generate_url, json=payload)
+            response = await client.post(self._generate_url, json=payload, timeout=httpx.Timeout(60.0))
             duration_ms = (time.monotonic() - start) * 1000
 
             if response.status_code != 200:
@@ -98,11 +94,7 @@ class OllamaBackend(ModelBackend):
             yield ""
             return
 
-        client = self._get_client()
-        if client is None:
-            yield ""
-            return
-
+        client = await self._ensure_client()
         payload = {
             "model": self.model_id,
             "prompt": prompt,
@@ -117,7 +109,6 @@ class OllamaBackend(ModelBackend):
             async with client.stream("POST", self._generate_url, json=payload) as response:
                 if response.status_code != 200:
                     logger.error("Ollama stream HTTP %d", response.status_code)
-                    yield ""
                     return
                 async for line in response.aiter_lines():
                     if not line.strip():
@@ -131,7 +122,6 @@ class OllamaBackend(ModelBackend):
                         continue
         except Exception as e:
             logger.error("Ollama stream error: %s", e)
-            yield ""
 
     async def generate_chat(
         self,
@@ -146,14 +136,7 @@ class OllamaBackend(ModelBackend):
                 error="httpx not installed",
             )
 
-        client = self._get_client()
-        if client is None:
-            return GenerationResult(
-                text="",
-                model_name=self.model_id,
-                error="Failed to create HTTP client",
-            )
-
+        client = await self._ensure_client()
         payload = {
             "model": self.model_id,
             "messages": messages,
@@ -166,7 +149,7 @@ class OllamaBackend(ModelBackend):
 
         start = time.monotonic()
         try:
-            response = await client.post(self._chat_url, json=payload)
+            response = await client.post(self._chat_url, json=payload, timeout=httpx.Timeout(60.0))
             duration_ms = (time.monotonic() - start) * 1000
 
             if response.status_code != 200:
@@ -198,22 +181,23 @@ class OllamaBackend(ModelBackend):
         if not HAS_HTTPX:
             return False
         try:
-            client = self._get_client()
-            if client is None:
-                return False
+            client = await self._ensure_client()
             resp = await client.get(f"{self.base_url}/api/tags", timeout=httpx.Timeout(5.0))
             if resp.status_code != 200:
                 logger.warning("Ollama health check failed: HTTP %d", resp.status_code)
                 return False
             models = resp.json().get("models", [])
-            available = any(m["name"] == self.model_id for m in models)
+            available = any(m.get("name") == self.model_id for m in models)
             if not available:
                 logger.warning(
                     "Model %s not found in Ollama. Available: %s",
                     self.model_id,
-                    [m["name"] for m in models],
+                    [m.get("name") for m in models],
                 )
             return available
+        except (KeyError, ValueError, TypeError) as e:
+            logger.warning("Ollama health check response parse failed: %s", e)
+            return False
         except Exception as e:
             logger.warning("Ollama health check failed: %s", e)
             return False

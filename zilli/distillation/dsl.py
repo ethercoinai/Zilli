@@ -1,6 +1,5 @@
 import json
 import logging
-import statistics
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -122,10 +121,10 @@ def run_experiment(
 
     cycles = [cycle] if cycle else []
 
-    avg_loss = statistics.mean([c.total_loss for c in cycles]) if cycles else 0.0
-    avg_kl = statistics.mean([c.kl_divergence for c in cycles]) if cycles else 0.0
-    avg_exec_r = statistics.mean([c.avg_executor_reward for c in cycles]) if cycles else 0.0
-    avg_plan_r = statistics.mean([c.avg_planner_reward for c in cycles]) if cycles else 0.0
+    avg_loss = cycles[0].total_loss if cycles else 0.0
+    avg_kl = cycles[0].kl_divergence if cycles else 0.0
+    avg_exec_r = cycles[0].avg_executor_reward if cycles else 0.0
+    avg_plan_r = cycles[0].avg_planner_reward if cycles else 0.0
     lora_count = sum(1 for c in cycles if c.lora_triggered)
 
     return ExperimentResult(

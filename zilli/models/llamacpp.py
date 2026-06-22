@@ -24,10 +24,13 @@ class LlamaCppBackend(ModelBackend):
         self._health_url = f"{self.base_url}/health"
         self._client: httpx.AsyncClient | None = None
 
-    def _get_client(self) -> httpx.AsyncClient | None:
+    async def _ensure_client(self) -> "httpx.AsyncClient":
         if self._client is None and HAS_HTTPX:
-            self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0))
-        return self._client
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(300.0),
+                limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
+            )
+        return self._client  # type: ignore
 
     async def generate(
         self,
@@ -41,13 +44,7 @@ class LlamaCppBackend(ModelBackend):
                 error="httpx not installed",
             )
 
-        client = self._get_client()
-        if client is None:
-            return GenerationResult(
-                text="", model_name=self.model_id,
-                error="Failed to create HTTP client",
-            )
-
+        client = await self._ensure_client()
         payload = {
             "prompt": prompt,
             "n_predict": max_tokens,
@@ -57,7 +54,7 @@ class LlamaCppBackend(ModelBackend):
 
         start = time.monotonic()
         try:
-            response = await client.post(self._completion_url, json=payload)
+            response = await client.post(self._completion_url, json=payload, timeout=httpx.Timeout(60.0))
             duration_ms = (time.monotonic() - start) * 1000
 
             if response.status_code != 200:
@@ -71,7 +68,7 @@ class LlamaCppBackend(ModelBackend):
             return GenerationResult(
                 text=data.get("content", ""),
                 model_name=self.model_id,
-                tokens_in=data.get("tokens_cached", 0) or data.get("tokens_evaluated", 0),
+                tokens_in=data.get("tokens_evaluated", 0),
                 tokens_out=data.get("tokens_predicted", 0),
                 duration_ms=duration_ms,
             )
@@ -92,11 +89,7 @@ class LlamaCppBackend(ModelBackend):
             yield ""
             return
 
-        client = self._get_client()
-        if client is None:
-            yield ""
-            return
-
+        client = await self._ensure_client()
         payload = {
             "prompt": prompt,
             "n_predict": max_tokens,
@@ -109,7 +102,6 @@ class LlamaCppBackend(ModelBackend):
             async with client.stream("POST", self._completion_url, json=payload) as response:
                 if response.status_code != 200:
                     logger.error("llama.cpp stream HTTP %d", response.status_code)
-                    yield ""
                     return
                 async for line in response.aiter_lines():
                     if not line.strip():
@@ -125,15 +117,12 @@ class LlamaCppBackend(ModelBackend):
                         continue
         except Exception as e:
             logger.error("llama.cpp stream error: %s", e)
-            yield ""
 
     async def health_check(self) -> bool:
         if not HAS_HTTPX:
             return False
         try:
-            client = self._get_client()
-            if client is None:
-                return False
+            client = await self._ensure_client()
             resp = await client.get(self._health_url, timeout=httpx.Timeout(5.0))
             return resp.status_code == 200
         except Exception as e:

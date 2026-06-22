@@ -52,7 +52,7 @@ class ModelBackend(ABC):
             async with sem:
                 return await self.generate(p, max_tokens, temperature)
 
-        return await asyncio.gather(*[ _one(p) for p in prompts ])
+        return await asyncio.gather(*[ _one(p) for p in prompts ], return_exceptions=True)
 
     @abstractmethod
     async def health_check(self) -> bool:

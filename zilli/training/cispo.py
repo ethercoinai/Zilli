@@ -15,12 +15,19 @@ class CISPO_Trainer:  # noqa: N801
         self.config = config
 
     def compute_loss(self, trajectories: List[Dict], advantages: List[float]) -> Dict[str, float]:
+        if not trajectories or not advantages:
+            return {
+                "loss": 0.0, "policy_loss": 0.0, "value_loss": 0.0,
+                "kl": 0.0, "entropy": 0.0, "approx_kl": 0.0,
+                "clip_frac": 0.0, "mean_advantage": 0.0, "std_advantage": 0.0,
+            }
+
         log_probs = np.array([t.get("log_prob", 0.0) for t in trajectories])
         old_log_probs = np.array([t.get("old_log_prob", 0.0) for t in trajectories])
         advantages = np.array(advantages)
         advantages = self._normalize_advantages(advantages)
 
-        ratio = np.exp(np.clip(log_probs - old_log_probs, -10, 10))
+        ratio = np.exp(np.clip(log_probs - old_log_probs, -5, 5))
         ratio = np.clip(ratio, 0, self.is_weight_cap)
 
         clipped_ratio = np.clip(ratio, 1 - self.clip_range, 1 + self.clip_range)
@@ -41,7 +48,8 @@ class CISPO_Trainer:  # noqa: N801
             total_loss = total_loss + value_loss
 
         clip_frac = float(np.mean(np.abs(ratio - 1) > self.clip_range))
-        approx_kl = float(((ratio - 1) - np.log(ratio)).mean())
+        safe_ratio = np.clip(ratio, 1e-8, None)
+        approx_kl = float(((safe_ratio - 1) - np.log(safe_ratio)).mean())
 
         return {
             "loss": float(total_loss),
@@ -56,6 +64,8 @@ class CISPO_Trainer:  # noqa: N801
         }
 
     def compute_advantages(self, rewards: List[float], dones: List[bool]) -> List[float]:
+        if not rewards:
+            return []
         returns = []
         discounted_return = 0.0
         for t in reversed(range(len(rewards))):
@@ -66,6 +76,10 @@ class CISPO_Trainer:  # noqa: N801
 
     def compute_gae_advantages(self, rewards: List[float], values: List[float],
                                 dones: List[bool]) -> List[float]:
+        if not rewards or not values or not dones:
+            return []
+        if not (len(rewards) == len(values) == len(dones)):
+            raise ValueError("rewards, values, dones must have equal length")
         advantages = []
         gae = 0.0
         for t in reversed(range(len(rewards))):
@@ -85,11 +99,12 @@ class CISPO_Trainer:  # noqa: N801
 
     def _compute_entropy(self, log_probs: np.ndarray) -> float:
         probs = np.exp(np.clip(log_probs, -10, 0))
-        entropy = -(probs * log_probs).sum() / len(log_probs)
+        probs = np.clip(probs, 1e-10, None)
+        entropy = -(probs * np.log(probs)).sum() / len(log_probs)
         return float(entropy)
 
     def _compute_returns(self, advantages: np.ndarray, values: np.ndarray) -> np.ndarray:
-        return advantages + values
+        return values + advantages
 
 
 __all__ = ["CISPO_Trainer"]

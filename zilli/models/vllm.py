@@ -22,12 +22,15 @@ class VLLMBackend(ModelBackend):
         super().__init__(name, model_id, base_url)
         self._completions_url = f"{self.base_url}/v1/completions"
         self._models_url = f"{self.base_url}/v1/models"
-        self._client: httpx.AsyncClient | None = None
+        self._client: Optional["httpx.AsyncClient"] = None
 
-    def _get_client(self) -> httpx.AsyncClient | None:
+    async def _ensure_client(self) -> "httpx.AsyncClient":
         if self._client is None and HAS_HTTPX:
-            self._client = httpx.AsyncClient(timeout=httpx.Timeout(300.0))
-        return self._client
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(300.0),
+                limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
+            )
+        return self._client  # type: ignore
 
     async def generate(
         self,
@@ -41,13 +44,7 @@ class VLLMBackend(ModelBackend):
                 error="httpx not installed",
             )
 
-        client = self._get_client()
-        if client is None:
-            return GenerationResult(
-                text="", model_name=self.model_id,
-                error="Failed to create HTTP client",
-            )
-
+        client = await self._ensure_client()
         payload = {
             "model": self.model_id,
             "prompt": prompt,
@@ -57,7 +54,7 @@ class VLLMBackend(ModelBackend):
 
         start = time.monotonic()
         try:
-            response = await client.post(self._completions_url, json=payload)
+            response = await client.post(self._completions_url, json=payload, timeout=httpx.Timeout(60.0))
             duration_ms = (time.monotonic() - start) * 1000
 
             if response.status_code != 200:
@@ -68,8 +65,8 @@ class VLLMBackend(ModelBackend):
                 )
 
             data = response.json()
-            choices = data.get("choices", [])
-            text = choices[0].get("text", "") if choices else ""
+            choices = data.get("choices") or []
+            text = choices[0].get("text", "") if len(choices) > 0 else ""
             usage = data.get("usage", {})
             return GenerationResult(
                 text=text,
@@ -95,11 +92,7 @@ class VLLMBackend(ModelBackend):
             yield ""
             return
 
-        client = self._get_client()
-        if client is None:
-            yield ""
-            return
-
+        client = await self._ensure_client()
         payload = {
             "model": self.model_id,
             "prompt": prompt,
@@ -112,7 +105,6 @@ class VLLMBackend(ModelBackend):
             async with client.stream("POST", self._completions_url, json=payload) as response:
                 if response.status_code != 200:
                     logger.error("vLLM stream HTTP %d", response.status_code)
-                    yield ""
                     return
                 async for line in response.aiter_lines():
                     if not line.strip() or line.startswith(":") or line == "data: [DONE]":
@@ -127,7 +119,6 @@ class VLLMBackend(ModelBackend):
                             continue
         except Exception as e:
             logger.error("vLLM stream error: %s", e)
-            yield ""
 
     async def generate_chat(
         self,
@@ -141,13 +132,7 @@ class VLLMBackend(ModelBackend):
                 error="httpx not installed",
             )
 
-        client = self._get_client()
-        if client is None:
-            return GenerationResult(
-                text="", model_name=self.model_id,
-                error="Failed to create HTTP client",
-            )
-
+        client = await self._ensure_client()
         chat_url = f"{self.base_url}/v1/chat/completions"
         payload = {
             "model": self.model_id,
@@ -193,6 +178,7 @@ class VLLMBackend(ModelBackend):
             client = self._get_client()
             if client is None:
                 return False
+            client = await self._ensure_client()
             resp = await client.get(self._models_url, timeout=httpx.Timeout(5.0))
             if resp.status_code != 200:
                 return False

@@ -82,6 +82,8 @@ class MockTorchModule:
         if isinstance(data, (int, float)):
             return MockTorchTensor(float(data))
         if isinstance(data, list):
+            if data and isinstance(data[0], list):
+                return MockTorchTensor(sum(sum(s) for s in data) / max(len(data) * len(data[0]), 1))
             if data:
                 return MockTorchTensor(sum(data) / len(data))
         return MockTorchTensor(0.0)

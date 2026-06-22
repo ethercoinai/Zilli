@@ -98,8 +98,8 @@ class DistillationScheduler:
         for i in range(n):
             ep = math.exp(min(max(executor_log_probs[i], -10), 0))
             pp = math.exp(min(max(planner_log_probs[i], -10), 0))
-            ep = max(min(ep, 1.0 - 1e-10), 1e-10)
-            pp = max(min(pp, 1.0 - 1e-10), 1e-10)
+            ep = max(min(ep, 1.0 - 1e-8), 1e-8)
+            pp = max(min(pp, 1.0 - 1e-8), 1e-8)
             bc += -math.log(ep) * pp
             kl += pp * (math.log(pp) - math.log(ep))
         bc /= n
@@ -115,7 +115,7 @@ class DistillationScheduler:
         for i in range(n):
             r_e = executor_rewards[i]
             r_p = planner_rewards[i]
-            loss += -r_e + self.reward_gamma * (r_e - r_p) ** 2
+            loss += -r_e + self.reward_gamma * (r_p - r_e) ** 2
         return loss / n
 
     def compute_reg_loss(self, samples: List[DistillationSample]) -> float:
@@ -123,9 +123,10 @@ class DistillationScheduler:
         count = 0
         for s in samples:
             if s.executor_embedding is not None and s.planner_embedding is not None:
+                min_len = min(len(s.executor_embedding), len(s.planner_embedding))
                 dist = math.sqrt(
                     sum((a - b) ** 2 for a, b in
-                        zip(s.executor_embedding, s.planner_embedding))
+                        zip(s.executor_embedding[:min_len], s.planner_embedding[:min_len]))
                 )
                 loss += max(0.0, dist - self.embedding_delta)
                 count += 1
@@ -274,8 +275,8 @@ class DistillationScheduler:
             )
             exec_probs = torch.exp(torch.clamp(exec_log_probs, max=0))
             plan_probs = torch.exp(torch.clamp(plan_log_probs, max=0))
-            exec_probs = torch.clamp(exec_probs, min=1e-10, max=1 - 1e-10)
-            plan_probs = torch.clamp(plan_probs, min=1e-10, max=1 - 1e-10)
+            exec_probs = torch.clamp(exec_probs, min=1e-8, max=1 - 1e-8)
+            plan_probs = torch.clamp(plan_probs, min=1e-8, max=1 - 1e-8)
             exec_rew = torch.tensor([s.executor_reward for s in samples], device=device)
             plan_rew = torch.tensor([s.planner_reward for s in samples], device=device)
 
@@ -285,16 +286,21 @@ class DistillationScheduler:
 
             rl_loss = (-exec_rew + self.reward_gamma * (exec_rew - plan_rew) ** 2).mean()
 
-            reg = torch.tensor(0.0, device=device)
+            reg_loss_t = torch.tensor(0.0, device=device)
             count = 0
+            ee_list = []
+            pe_list = []
             for s in samples:
                 if s.executor_embedding is not None and s.planner_embedding is not None:
-                    ee = torch.tensor(s.executor_embedding, device=device)
-                    pe = torch.tensor(s.planner_embedding, device=device)
-                    d = torch.norm(ee - pe)
-                    reg = reg + torch.clamp(d - self.embedding_delta, min=0)
+                    ee_list.append(s.executor_embedding)
+                    pe_list.append(s.planner_embedding)
                     count += 1
-            reg_loss = (reg / count) if count > 0 else torch.tensor(0.0, device=device)
+            if count > 0:
+                ee_t = torch.tensor(ee_list, device=device)
+                pe_t = torch.tensor(pe_list, device=device)
+                dists = torch.norm(ee_t - pe_t, dim=1)
+                reg_loss_t = torch.clamp(dists - self.embedding_delta, min=0).mean()
+            reg_loss = reg_loss_t
 
             total = (
                 self.lambda_bc * bc_loss
@@ -318,6 +324,25 @@ class DistillationScheduler:
             path = str(self.log_dir / "checkpoint.json")
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+
+        def _safe_val(v):
+            if isinstance(v, (dict, list, str, int, float, bool)) or v is None:
+                return v
+            return str(v)
+
+        def _safe_sample(s):
+            return {k: _safe_val(v) for k, v in {
+                "executor_action": s.executor_action,
+                "planner_action": s.planner_action,
+                "executor_log_prob": s.executor_log_prob,
+                "planner_log_prob": s.planner_log_prob,
+                "executor_reward": s.executor_reward,
+                "planner_reward": s.planner_reward,
+                "state_embedding": s.state_embedding,
+                "executor_embedding": s.executor_embedding,
+                "planner_embedding": s.planner_embedding,
+            }.items()}
+
         data = {
             "scheduler_params": {
                 "lambda_bc": self.lambda_bc,
@@ -332,20 +357,7 @@ class DistillationScheduler:
                 "log_dir": str(self.log_dir),
             },
             "state": {
-                "buffer": [
-                    {
-                        "executor_action": s.executor_action,
-                        "planner_action": s.planner_action,
-                        "executor_log_prob": s.executor_log_prob,
-                        "planner_log_prob": s.planner_log_prob,
-                        "executor_reward": s.executor_reward,
-                        "planner_reward": s.planner_reward,
-                        "state_embedding": s.state_embedding,
-                        "executor_embedding": s.executor_embedding,
-                        "planner_embedding": s.planner_embedding,
-                    }
-                    for s in self._buffer
-                ],
+                "buffer": [_safe_sample(s) for s in self._buffer],
                 "cycles": [
                     {
                         "cycle_id": c.cycle_id,
@@ -384,21 +396,22 @@ class DistillationScheduler:
             raise FileNotFoundError(f"Checkpoint not found: {path}")
         with open(p) as f:
             data = json.load(f)
-        params = data["scheduler_params"]
+        params = data.get("scheduler_params", {})
+        params.setdefault("log_dir", "")
         scheduler = cls(**params)
-        state = data["state"]
+        state = data.get("state", {})
         scheduler._buffer = [
-            DistillationSample(**s) for s in state["buffer"]
+            DistillationSample(**s) for s in state.get("buffer", [])
         ]
         scheduler._cycles = [
-            DistillationCycle(**c) for c in state["cycles"]
+            DistillationCycle(**c) for c in state.get("cycles", [])
         ]
-        scheduler._total_samples = state["total_samples"]
-        scheduler._lora_events = state["lora_events"]
-        scheduler._full_sft_events = state["full_sft_events"]
-        scheduler._last_lora_time = state["last_lora_time"]
-        scheduler._last_full_sft_time = state["last_full_sft_time"]
-        scheduler._recent_kl = deque(state["recent_kl"], maxlen=100)
+        scheduler._total_samples = state.get("total_samples", 0)
+        scheduler._lora_events = state.get("lora_events", 0)
+        scheduler._full_sft_events = state.get("full_sft_events", 0)
+        scheduler._last_lora_time = state.get("last_lora_time", 0.0)
+        scheduler._last_full_sft_time = state.get("last_full_sft_time", 0.0)
+        scheduler._recent_kl = deque(state.get("recent_kl", []), maxlen=100)
         logger.info("Checkpoint loaded from %s (%d samples, %d cycles)", p, scheduler._total_samples, len(scheduler._cycles))
         return scheduler
 
