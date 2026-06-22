@@ -19,9 +19,14 @@ class TestTrainingConfig:
             TrainingConfig(clip_range=-0.1)
 
     def test_from_dict(self):
-        cfg = TrainingConfig.from_dict({"clip_range": 0.3, "unknown_key": 99})
+        cfg = TrainingConfig.from_dict({"clip_range": 0.3})
         assert cfg.clip_range == 0.3
-        assert not hasattr(cfg, "unknown_key")
+
+    def test_from_dict_rejects_unknown(self):
+        from pydantic import ValidationError
+        import pytest
+        with pytest.raises(ValidationError):
+            TrainingConfig.from_dict({"clip_range": 0.3, "unknown_key": 99})
 
     def test_to_training_kwargs(self):
         cfg = TrainingConfig(algorithm="GRPO", clip_range=0.25)

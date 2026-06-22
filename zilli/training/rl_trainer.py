@@ -8,7 +8,6 @@ from zilli.training.grpo import GRPO_Trainer
 class RLTrainer:
     def __init__(self, config: Optional[Dict] = None):
         self.training_config = TrainingConfig.from_dict(config or {})
-        self.raw_config = config or {}
         algorithm = self.training_config.algorithm
         if algorithm == "CISPO":
             self.impl = CISPO_Trainer(self.training_config.to_training_kwargs())

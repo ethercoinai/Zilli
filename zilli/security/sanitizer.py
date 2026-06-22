@@ -1,18 +1,32 @@
 import logging
-import re
 from typing import Optional
 
 from zilli.security.pii import PIIDetector, Sanitizer
 
 logger = logging.getLogger("zilli.security.sanitizer")
 
-_PROMPT_INJECTION_PATTERNS = [
-    re.compile(r"ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions", re.I),
-    re.compile(r"forget\s+(?:all\s+)?(?:previous|above|prior)", re.I),
-    re.compile(r"you\s+are\s+(?:now|not\s+an?\s+ai|free|released)", re.I),
-    re.compile(r"system\s+(?:prompt|message|instruction)", re.I),
-    re.compile(r"<\|im_start\|>|<\|im_end\|>", re.I),
+_INJECTION_SIGNATURES = [
+    "ignore all previous", "ignore all above", "ignore all prior",
+    "forget all previous", "forget all above",
+    "you are now", "you are not an", "you are free", "you are released",
+    "system prompt", "system message", "system instruction",
+    "<|im_start|>", "<|im_end|>",
+    "you must obey", "override", "new instructions",
 ]
+
+
+def _has_injection(text: str) -> bool:
+    lowered = text.lower()
+    # Normalize Unicode confusables
+    normalized = lowered.replace("\u201c", '"').replace("\u201d", '"')
+    normalized = normalized.replace("\u2018", "'").replace("\u2019", "'")
+    normalized = normalized.replace("\u00a0", " ")
+    # Strip common padding
+    normalized = " ".join(normalized.split())
+    for sig in _INJECTION_SIGNATURES:
+        if sig in normalized:
+            return True
+    return False
 
 
 class InputSanitizer:
@@ -28,12 +42,11 @@ class InputSanitizer:
             clean = clean[:1_000_000]
             logger.warning("Input truncated to 1M chars")
 
-        for pattern in _PROMPT_INJECTION_PATTERNS:
-            if pattern.search(clean):
-                clean = pattern.sub("[REDACTED]", clean)
-                logger.info("Prompt injection pattern removed from input")
+        if _has_injection(clean):
+            clean = "[REDACTED - potential prompt injection]"
+            logger.info("Prompt injection detected in input")
 
-        if strip_pii:
+        if strip_pii and not _has_injection(clean):
             result = self.pii_sanitizer.sanitize(clean)
             return result.sanitized
 
@@ -42,9 +55,8 @@ class InputSanitizer:
     def classify_safe(self, text: str) -> bool:
         if len(text) > 1_000_000:
             return False
-        for pattern in _PROMPT_INJECTION_PATTERNS:
-            if pattern.search(text):
-                return False
+        if _has_injection(text):
+            return False
         return True
 
 
@@ -52,8 +64,6 @@ def safe_format(template: str, /, max_length: int = 100_000, **kwargs) -> str:
     for k, v in kwargs.items():
         if isinstance(v, str) and len(v) > max_length:
             kwargs[k] = v[:max_length] + "... [TRUNCATED]"
-        elif isinstance(v, str):
-            kwargs[k] = v.replace("<", "&lt;").replace(">", "&gt;")
     return template.format(**kwargs)
 
 

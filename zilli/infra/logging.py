@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import threading
@@ -23,11 +24,12 @@ def set_trace_id(tid: Optional[str] = None) -> str:
 class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         base = {
-            "ts": time.time(),
+            "ts": datetime.datetime.fromtimestamp(record.created, tz=datetime.timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
             "trace_id": get_trace_id(),
+            "file": f"{record.pathname}:{record.lineno}",
         }
         if hasattr(record, "extra") and isinstance(record.extra, dict):
             base.update(record.extra)
@@ -47,13 +49,11 @@ class TraceLogger:
         self._logger = logging.getLogger(name)
 
     def _log(self, level: str, msg: str, **extra: Any):
-        record = self._logger.makeRecord(
-            self._logger.name, getattr(logging, level.upper(), logging.INFO),
-            "", 0, msg, (), None,
+        self._logger.log(
+            getattr(logging, level.upper(), logging.INFO),
+            msg,
+            extra={"trace_id": get_trace_id(), **extra},
         )
-        record.__dict__.setdefault("extra", {}).update(extra)
-        record.trace_id = get_trace_id()
-        self._logger.handle(record)
 
     def info(self, msg: str, **extra):
         self._log("info", msg, **extra)

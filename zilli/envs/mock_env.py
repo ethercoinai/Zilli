@@ -174,6 +174,7 @@ class HermesSandbox:
         self.skill_library = []
         self.current_trajectory = []
         self.conversation_turns = 0
+        self._lock = asyncio.Lock()
         self.context = {
             "memory": {}, "skills": {}, "files": {},
             "bash_history": [], "search_history": [], "code_history": [],

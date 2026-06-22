@@ -2,6 +2,8 @@ from typing import Dict, List
 
 import numpy as np
 
+from zilli.training.distillation import DistillationSample
+
 
 def make_dummy_golden(
     count: int = 10,
@@ -57,9 +59,8 @@ def make_dummy_failure(
 def make_dummy_distillation_samples(
     count: int = 100,
     seed: int = 42,
-):
+) -> List[DistillationSample]:
     rng = np.random.default_rng(seed + 2)
-    from zilli.training.distillation import DistillationSample
 
     samples = []
     for idx in range(count):

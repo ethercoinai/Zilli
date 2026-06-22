@@ -15,13 +15,13 @@ class TrainingConfig(BaseModel):
     entropy_coef: float = Field(default=0.01, ge=0.0)
     vf_coef: float = Field(default=0.5, ge=0.0)
     batch_size: int = Field(default=64, ge=1)
-    learning_rate: float = Field(default=3e-4, gt=0.0)
+    learning_rate: float = Field(default=3e-4, gt=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> TrainingConfig:
-        return cls(**{k: v for k, v in d.items() if k in cls.model_fields})
+        return cls(**d)
 
     def to_training_kwargs(self) -> Dict[str, Any]:
         return self.model_dump(exclude={"algorithm", "batch_size", "learning_rate"})

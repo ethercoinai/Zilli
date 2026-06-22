@@ -158,11 +158,12 @@ class LocalHybridRouter:
         industry: str = "",
     ) -> list[str]:
         results: list[str] = []
+        safe_request = self.sanitizer.sanitize(request)
         for sub in sub_tasks:
             prompt = self._enrich_prompt(
-                _EXECUTE_PROMPT.format(plan=sub, request=request), industry,
+                safe_format(_EXECUTE_PROMPT, plan=sub, request=safe_request), industry,
             )
-            result = await self.registry.generate(ModelRole.EXECUTOR, prompt)
+            result = await self._with_cache(ModelRole.EXECUTOR, prompt)
             if result.error:
                 logger.warning("Sub-task executor failed: %s", result.error)
                 results.append(f"[Error: {result.error}]")
@@ -175,7 +176,7 @@ class LocalHybridRouter:
         prompt = self._enrich_prompt(
             safe_format(_REVIEW_PROMPT, plan=plan, draft=draft, request=safe_request), industry,
         )
-        result = await self.registry.generate(ModelRole.REVIEWER, prompt)
+        result = await self._with_cache(ModelRole.REVIEWER, prompt)
         if result.error:
             logger.error("Reviewer failed: %s", result.error)
             return draft
@@ -207,7 +208,7 @@ class LocalHybridRouter:
         try:
             if decision.route == RouteType.FAST_LANE:
                 prompt = self._enrich_prompt(
-                    _EXECUTE_PROMPT.format(plan="Answer the request directly.", request=request),
+                    safe_format(_EXECUTE_PROMPT, plan="Answer the request directly.", request=request),
                     industry,
                 )
                 result = await self._with_cache(ModelRole.EXECUTOR, prompt)
