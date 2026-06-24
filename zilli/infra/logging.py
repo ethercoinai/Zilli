@@ -1,11 +1,9 @@
 import datetime
 import json
 import logging
-import threading
-import time
 import uuid
 from contextvars import ContextVar
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 _trace_id: ContextVar[str] = ContextVar("trace_id", default="")
 

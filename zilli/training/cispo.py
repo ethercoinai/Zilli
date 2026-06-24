@@ -14,55 +14,6 @@ class CISPO_Trainer:  # noqa: N801
         self.vf_coef = config.get("vf_coef", 0.5)
         self.config = config
 
-    def compute_loss(self, trajectories: List[Dict], advantages: List[float]) -> Dict[str, float]:
-        if not trajectories or not advantages:
-            return {
-                "loss": 0.0, "policy_loss": 0.0, "value_loss": 0.0,
-                "kl": 0.0, "entropy": 0.0, "approx_kl": 0.0,
-                "clip_frac": 0.0, "mean_advantage": 0.0, "std_advantage": 0.0,
-            }
-
-        log_probs = np.array([t.get("log_prob", 0.0) for t in trajectories])
-        old_log_probs = np.array([t.get("old_log_prob", 0.0) for t in trajectories])
-        advantages = np.array(advantages)
-        advantages = self._normalize_advantages(advantages)
-
-        ratio = np.exp(np.clip(log_probs - old_log_probs, -5, 5))
-        ratio = np.clip(ratio, 0, self.is_weight_cap)
-
-        clipped_ratio = np.clip(ratio, 1 - self.clip_range, 1 + self.clip_range)
-
-        surr1 = ratio * advantages
-        surr2 = clipped_ratio * advantages
-        policy_loss = -np.minimum(surr1, surr2).mean()
-
-        kl = (log_probs - old_log_probs).mean()
-        entropy = self._compute_entropy(log_probs)
-        total_loss = policy_loss + self.kl_penalty * kl - self.entropy_coef * entropy
-
-        value_loss = 0.0
-        if trajectories and all("value" in t for t in trajectories):
-            values = np.array([t.get("value", 0.0) for t in trajectories])
-            returns = self._compute_returns(advantages, values)
-            value_loss = ((values - returns) ** 2).mean() * self.vf_coef
-            total_loss = total_loss + value_loss
-
-        clip_frac = float(np.mean(np.abs(ratio - 1) > self.clip_range))
-        safe_ratio = np.clip(ratio, 1e-8, None)
-        approx_kl = float(((safe_ratio - 1) - np.log(safe_ratio)).mean())
-
-        return {
-            "loss": float(total_loss),
-            "policy_loss": float(policy_loss),
-            "value_loss": float(value_loss),
-            "kl": float(kl),
-            "entropy": float(entropy),
-            "approx_kl": approx_kl,
-            "clip_frac": clip_frac,
-            "mean_advantage": float(advantages.mean()),
-            "std_advantage": float(advantages.std()),
-        }
-
     def compute_advantages(self, rewards: List[float], dones: List[bool]) -> List[float]:
         if not rewards:
             return []
@@ -92,6 +43,62 @@ class CISPO_Trainer:  # noqa: N801
             advantages.insert(0, gae)
         return advantages
 
+    def _compute_returns_target(self, advantages: np.ndarray, values: np.ndarray,
+                                 trajectory_has_values: bool) -> np.ndarray:
+        if trajectory_has_values:
+            return values + advantages
+        return advantages
+
+    def compute_loss(self, trajectories: List[Dict], advantages: List[float]) -> Dict[str, float]:
+        if not trajectories or not advantages:
+            return {
+                "loss": 0.0, "policy_loss": 0.0, "value_loss": 0.0,
+                "kl": 0.0, "entropy": 0.0, "approx_kl": 0.0,
+                "clip_frac": 0.0, "mean_advantage": 0.0, "std_advantage": 0.0,
+            }
+
+        log_probs = np.array([t.get("log_prob", 0.0) for t in trajectories])
+        old_log_probs = np.array([t.get("old_log_prob", 0.0) for t in trajectories])
+        advantages_arr = np.array(advantages)
+        advantages_arr = self._normalize_advantages(advantages_arr)
+
+        ratio = np.exp(np.clip(log_probs - old_log_probs, -5, 5))
+        ratio = np.clip(ratio, 0, self.is_weight_cap)
+
+        clipped_ratio = np.clip(ratio, 1 - self.clip_range, 1 + self.clip_range)
+
+        surr1 = ratio * advantages_arr
+        surr2 = clipped_ratio * advantages_arr
+        policy_loss = -np.minimum(surr1, surr2).mean()
+
+        kl = (log_probs - old_log_probs).mean()
+        entropy = self._compute_entropy(log_probs)
+        total_loss = policy_loss + self.kl_penalty * kl - self.entropy_coef * entropy
+
+        trajectory_has_values = trajectories and all("value" in t for t in trajectories)
+        value_loss = 0.0
+        if trajectory_has_values:
+            values = np.array([t.get("value", 0.0) for t in trajectories])
+            returns_target = self._compute_returns_target(advantages_arr, values, True)
+            value_loss = ((values - returns_target) ** 2).mean() * self.vf_coef
+            total_loss = total_loss + value_loss
+
+        clip_frac = float(np.mean(np.abs(ratio - 1) > self.clip_range))
+        safe_ratio = np.clip(ratio, 1e-8, None)
+        approx_kl = float(((safe_ratio - 1) - np.log(safe_ratio)).mean())
+
+        return {
+            "loss": float(total_loss),
+            "policy_loss": float(policy_loss),
+            "value_loss": float(value_loss),
+            "kl": float(kl),
+            "entropy": float(entropy),
+            "approx_kl": approx_kl,
+            "clip_frac": clip_frac,
+            "mean_advantage": float(advantages_arr.mean()),
+            "std_advantage": float(advantages_arr.std()),
+        }
+
     def _normalize_advantages(self, advantages: np.ndarray) -> np.ndarray:
         if advantages.std() > 1e-8:
             return (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -102,9 +109,6 @@ class CISPO_Trainer:  # noqa: N801
         probs = np.clip(probs, 1e-10, None)
         entropy = -(probs * np.log(probs)).sum() / len(log_probs)
         return float(entropy)
-
-    def _compute_returns(self, advantages: np.ndarray, values: np.ndarray) -> np.ndarray:
-        return values + advantages
 
 
 __all__ = ["CISPO_Trainer"]

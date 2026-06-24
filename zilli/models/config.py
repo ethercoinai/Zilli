@@ -12,11 +12,20 @@ class ModelRole(str, Enum):
         return self.value
 
 
+class DeploymentType(str, Enum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+
 class ModelConfig(BaseModel):
     name: str = Field(..., description="Logical name for this model endpoint")
     backend: str = Field("ollama", description="Backend type: ollama, vllm, llamacpp")
     model_id: str = Field(..., description="Model identifier (e.g. qwen3:27b)")
     role: ModelRole = Field(..., description="Role this model serves")
+    deployment: DeploymentType = Field(
+        DeploymentType.LOCAL,
+        description="Where this model runs: local (on-prem) or cloud",
+    )
     base_url: str = Field("http://127.0.0.1:11434", description="API base URL")
     max_tokens: int = 2048
     temperature: float = 0.1

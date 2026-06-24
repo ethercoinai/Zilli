@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from zilli.configs import ZilliConfig, load_config
 from zilli.models import ModelRegistry
-from zilli.models.config import ModelRole
+from zilli.privacy.engine import PrivacyEngine, SanitizationMode
 from zilli.routing import LocalHybridRouter, RouteClassifier
 from zilli.server.dashboard import _DASHBOARD_HTML
 from zilli.server.schemas import (
@@ -81,6 +81,7 @@ class ZilliAppState:
         self.registry: Optional[ModelRegistry] = None
         self.classifier: Optional[RouteClassifier] = None
         self.router: Optional[LocalHybridRouter] = None
+        self.privacy: Optional[PrivacyEngine] = None
         self.cost_controller = None
         self.api_keys: set[str] = set()
         self.rate_limiter = RateLimiter()
@@ -98,6 +99,7 @@ class ZilliAppState:
             classifier=self.classifier,
             config=self.config,
         )
+        self.privacy = PrivacyEngine()
         if self.config is not None:
             from zilli.envs.cost_controller import CostController
             self.cost_controller = CostController(config=self.config)
@@ -201,9 +203,16 @@ def create_app(config: Optional[ZilliConfig] = None) -> FastAPI:
         state.ensure_initialized()
         start = time.monotonic()
 
+        verdict = state.privacy.evaluate(
+            body.request, tenant_id=x_tenant_id, mode=SanitizationMode.AUTO,
+        )
+        if not verdict.passed:
+            raise HTTPException(status_code=403, detail="Request blocked by privacy policy")
+        input_text = verdict.sanitized_text
+
         try:
             result = await state.router.run(
-                request=body.request,
+                request=input_text,
                 industry=body.industry,
                 force_full_route=body.force_full_route,
             )
@@ -335,7 +344,9 @@ def create_app(config: Optional[ZilliConfig] = None) -> FastAPI:
     # ── OpenAI-compatible ─────────────────────────────────────────────
 
     @app.post("/v1/chat/completions")
-    async def chat_completions(body: ChatCompletionRequest, request: Request = None):
+    async def chat_completions(body: ChatCompletionRequest,
+                               x_tenant_id: str = Header("default"),
+                               request: Request = None):
         state.ensure_initialized()
         start = time.time()
 
@@ -352,8 +363,14 @@ def create_app(config: Optional[ZilliConfig] = None) -> FastAPI:
 
         prompt = _messages_to_prompt(body.messages)
 
+        verdict = state.privacy.evaluate(
+            prompt, tenant_id=x_tenant_id, mode=SanitizationMode.AUTO,
+        )
+        if not verdict.passed:
+            raise HTTPException(status_code=403, detail="Request blocked by privacy policy")
+
         try:
-            result = await state.router.run(request=prompt, force_full_route=False)
+            result = await state.router.run(request=verdict.sanitized_text, force_full_route=False)
         except Exception as e:
             _metrics["errors_total"] += 1
             logger.error("Chat completion error: %s", e, exc_info=True)
@@ -430,33 +447,23 @@ async def _stream_chat(body: ChatCompletionRequest, state: ZilliAppState) -> Asy
     start = time.time()
     request_id = f"chatcmpl-{int(start)}"
 
+    verdict = state.privacy.evaluate(
+        prompt, tenant_id="default", mode=SanitizationMode.AUTO,
+    )
+    if not verdict.passed:
+        yield f"data: {json.dumps({'error': {'message': 'Blocked by privacy policy'}})}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+    safe_prompt = verdict.sanitized_text
+
     yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
 
     try:
-        if state.router and state.router.cache:
-            cached = state.router.cache.get(prompt, "executor")
-            if cached is not None:
-                yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {'content': cached.response_text}, 'finish_reason': None}]})}\n\n"
-                yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-                yield "data: [DONE]\n\n"
-                return
-
-        executor = await state.registry.get_model_for_role(ModelRole.EXECUTOR)
-        if executor is not None:
-            full_text = ""
-            async for chunk in executor.generate_stream(prompt=prompt):
-                if chunk:
-                    full_text += chunk
-                    yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {'content': chunk}, 'finish_reason': None}]})}\n\n"
-
-            yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-            _metrics["tokens_total"] += len(full_text) // 4
-        else:
-            result = await state.router.run(request=prompt, force_full_route=False)
-            text = result.final_text or ""
-            yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]})}\n\n"
-            yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
-            _metrics["tokens_total"] += len(text) // 4
+        result = await state.router.run(request=safe_prompt, force_full_route=False)
+        text = result.final_text or ""
+        yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {'content': text}, 'finish_reason': None}]})}\n\n"
+        yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': int(start), 'model': body.model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+        _metrics["tokens_total"] += len(text) // 4
     except Exception as e:
         logger.error("Stream error: %s", e, exc_info=True)
         _metrics["errors_total"] += 1

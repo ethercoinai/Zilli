@@ -1,6 +1,20 @@
-from zilli.audit import AuditEvent, AuditLevel, AuditLogger
+from zilli.audit import (
+    AuditEvent,
+    AuditLevel,
+    AuditLogger,
+    ComplianceFramework,
+    ComplianceReport,
+    ComplianceReporter,
+)
 from zilli.cache import CacheConfig, CacheEngine, CacheEntry, CacheStats
 from zilli.configs import ZilliConfig, load_config
+from zilli.hybrid import (
+    ExecutionTarget,
+    GatekeeperDecision,
+    HybridExecutor,
+    HybridResult,
+    PrivacyGatekeeper,
+)
 from zilli.industry import IndustryType, IndustryWorkflow, WorkflowRegistry
 from zilli.infra.device_utils import (
     DeviceType,
@@ -12,6 +26,7 @@ from zilli.infra.device_utils import (
     set_device,
 )
 from zilli.models import (
+    DeploymentType,
     GenerationResult,
     LlamaCppBackend,
     ModelBackend,
@@ -21,6 +36,26 @@ from zilli.models import (
     ModelRole,
     OllamaBackend,
     VLLMBackend,
+)
+from zilli.privacy import (
+    CLASS_LEVEL,
+    ClassificationResult,
+    CloudProvider,
+    ConsentManager,
+    ConsentRecord,
+    ConsentStatus,
+    DataClass,
+    DataClassifier,
+    DataGovernancePolicy,
+    DataUse,
+    PolicyStore,
+    PrivacyEngine,
+    PrivacyVerdict,
+    ReIDAssessment,
+    ReIDAssessor,
+    ReIDRisk,
+    SanitizationMode,
+    SanitizationRule,
 )
 from zilli.routing import (
     LocalHybridRouter,
@@ -73,10 +108,19 @@ __all__ = [
     "PIIDetector", "PIICategory", "Sanitizer",
     "DataIsolation", "IsolationPolicy", "AccessLevel",
     "AuditLogger", "AuditEvent", "AuditLevel",
+    "ComplianceReporter", "ComplianceReport", "ComplianceFramework",
     "IndustryType", "IndustryWorkflow", "WorkflowRegistry",
     "get_device", "set_device", "detect_device",
     "is_cuda_available", "is_mps_available", "is_gpu_available",
     "DeviceType",
     "ZilliConfig", "load_config",
     "CacheConfig", "CacheEngine", "CacheEntry", "CacheStats",
+    "DeploymentType",
+    "DataClass", "CLASS_LEVEL", "DataClassifier", "ClassificationResult",
+    "CloudProvider", "DataGovernancePolicy", "PolicyStore", "SanitizationRule",
+    "ReIDAssessor", "ReIDAssessment", "ReIDRisk",
+    "ConsentManager", "ConsentRecord", "ConsentStatus", "DataUse",
+    "PrivacyEngine", "PrivacyVerdict", "SanitizationMode",
+    "PrivacyGatekeeper", "GatekeeperDecision", "ExecutionTarget",
+    "HybridExecutor", "HybridResult",
 ]

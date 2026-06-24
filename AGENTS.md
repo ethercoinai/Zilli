@@ -101,6 +101,10 @@ python3 -m zilli.cli sandbox-test
 
 Phase 1: 任务定义 → Phase 2: 轨迹数据 → Phase 3: RL 基础设施 → Phase 4: RL 训练 → Phase 5: 自动进化
 
+## Today (2026-06-22)
+- Wiki 技能（Obsidian LLM Wiki）+ Loop 技能（opencode loop-skill + Zilli loops 模块）已就绪
+- **新项目约定**：规划阶段即纳入 loop 模式（process → verify → retry → escalate），不再事后补加
+
 ## 设计决策
 
 | 决策 | 选择 | 理由 |

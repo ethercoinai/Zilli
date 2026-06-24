@@ -179,7 +179,6 @@ class WorkflowRegistry:
         if sanitize and workflow.require_sanitization:
             processed_request = workflow.sanitize_input(request)
 
-        classifier = self._classifier
         router = self._router
 
         result = await router.run(

@@ -1,7 +1,8 @@
-import json
 import io
+import json
 import logging
 import re
+
 from zilli.infra.logging import StructuredFormatter, get_trace_id, set_trace_id
 
 
@@ -24,7 +25,7 @@ class TestStructuredFormatter:
         assert data["logger"] == "test_logging"
 
     def test_trace_id_present(self):
-        tid = set_trace_id("abc123")
+        set_trace_id("abc123")
         self.logger.info("test")
         output = self.stream.getvalue()
         data = json.loads(output)

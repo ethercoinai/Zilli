@@ -129,9 +129,15 @@ class LocalHybridRouter:
 
         result = await self.registry.generate(role, prompt)
         if result.error is None and self.cache is not None and result.text:
-            self.cache.set(prompt, role.value, result.text,
-                           tokens_in=result.tokens_in, tokens_out=result.tokens_out)
+            if not self._contains_dangerous_output(result.text):
+                self.cache.set(prompt, role.value, result.text,
+                               tokens_in=result.tokens_in, tokens_out=result.tokens_out)
         return result
+
+    def _contains_dangerous_output(self, text: str) -> bool:
+        dangerous = ["rm -rf", "DROP TABLE", "FORMAT C:", "shutdown -h now", "> /dev/sda"]
+        lower = text.lower()
+        return any(d in lower for d in dangerous)
 
     async def plan(self, request: str, industry: str = "") -> str:
         safe_request = self.sanitizer.sanitize(request)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from zilli.models.base import GenerationResult, ModelBackend
 

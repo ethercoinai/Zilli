@@ -1,4 +1,3 @@
-import pytest
 from zilli.security.sanitizer import InputSanitizer, safe_format
 
 

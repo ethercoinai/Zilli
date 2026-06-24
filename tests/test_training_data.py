@@ -1,4 +1,8 @@
-from zilli.training.data import make_dummy_golden, make_dummy_failure, make_dummy_distillation_samples
+from zilli.training.data import (
+    make_dummy_distillation_samples,
+    make_dummy_failure,
+    make_dummy_golden,
+)
 
 
 class TestMakeDummyGolden:

@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from zilli.training.config import TrainingConfig, RLTrainerConfig
+
+from zilli.training.config import RLTrainerConfig, TrainingConfig
 
 
 class TestTrainingConfig:
@@ -23,8 +24,8 @@ class TestTrainingConfig:
         assert cfg.clip_range == 0.3
 
     def test_from_dict_rejects_unknown(self):
-        from pydantic import ValidationError
         import pytest
+        from pydantic import ValidationError
         with pytest.raises(ValidationError):
             TrainingConfig.from_dict({"clip_range": 0.3, "unknown_key": 99})
 
