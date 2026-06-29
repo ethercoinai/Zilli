@@ -427,8 +427,35 @@ Zilli 不仅是一套系统架构，更是一种**让 AI 自主开发 AI 工具*
 
 ## 快速链接
 
-- [Tutorial](docs/tutorial-getting-started.md) — 5 分钟上手
+- [Tutorial](docs/tutorial-getting-started.md) — 5 分钟上手（含 SWE agent）
 - [API Reference](docs/reference-distillation.md) — 蒸馏管道 / DSL / CLI
-- [How-to Guide](docs/howto-common-tasks.md) — 常见操作
+- [How-to Guide](docs/howto-common-tasks.md) — 常见操作（含 SWE fix loop）
 - [Explanation](docs/explanation-architecture.md) — 架构设计原理
+
+## CLI 命令速查
+
+| 命令 | 用途 |
+|------|------|
+| `zilli list-tasks` | 列出所有可用任务 |
+| `zilli models list` | 查看已注册模型 |
+| `zilli models health` | 检查模型健康状态 |
+| `zilli models generate <role> <prompt>` | 用指定角色模型生成 |
+| `zilli route <request>` | 混合路由（规划→执行→审查） |
+| `zilli industry list` | 列出行业工作流 |
+| `zilli industry run <type> <request>` | 运行行业工作流 |
+| `zilli evaluate [task_id]` | 在沙箱中评估任务 |
+| `zilli train` | 运行训练循环 |
+| `zilli distill` | 运行蒸馏循环 |
+| `zilli cost status` | 查看预算状态 |
+| `zilli swe --issue <desc> --repo <path>` | **SWE-bench 风格 bug 修复循环** |
+| `zilli serve` | 启动 API 服务器 |
+| `zilli sandbox-test` | 测试沙箱环境 |
+
+### SWE 子命令选项
+
+```
+zilli swe --issue <描述或文件路径> --repo <目标仓库>
+         [--model <模型名称>] [--test-cmd <命令>]
+         [--iterations <次数>] [--sandbox] [--verbose]
+```
 

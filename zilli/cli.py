@@ -81,6 +81,16 @@ def main():
     cost_sub.add_parser("status", help="显示预算状态")
     cost_sub.add_parser("reset-month", help="重置月度预算")
 
+    swe_parser = sub.add_parser("swe", help="SWE-bench 风格 Bug 修复循环")
+    swe_parser.add_argument("--repo", type=str, default=".", help="目标仓库路径")
+    swe_parser.add_argument("--issue", type=str, required=True, help="Bug 描述或 issue 文件路径")
+    swe_parser.add_argument("--model", type=str, default="", help="诊断用模型名称")
+    swe_parser.add_argument("--test-cmd", type=str, default="python -m pytest tests/ -x -q",
+                            help="测试命令")
+    swe_parser.add_argument("--iterations", type=int, default=3, help="最大迭代次数")
+    swe_parser.add_argument("--sandbox", action="store_true", help="使用 Docker 沙箱隔离")
+    swe_parser.add_argument("--verbose", action="store_true", help="显示详细信息")
+
     serve_parser = sub.add_parser("serve", help="启动 API 服务器")
     serve_parser.add_argument("--host", type=str, default="127.0.0.1", help="监听地址")
     serve_parser.add_argument("--port", type=int, default=8900, help="监听端口")
@@ -126,6 +136,9 @@ def main():
             ab_test_path=args.ab_test,
             log_dir=args.log_dir or "",
         )
+
+    elif args.command == "swe":
+        _run_swe(args)
 
     elif args.command == "serve":
         from zilli.server.app import run_server
@@ -543,6 +556,58 @@ def _run_train(config_path: str = None, cost_aware: bool = False, budget: float 
 
     print("Training simulation complete. Use --dry-run to acknowledge this is a dry run.")
     print("Training test complete.")
+
+
+def _run_swe(args: argparse.Namespace):
+    import asyncio
+
+    from zilli.models import ModelRegistry
+    from zilli.swe import SWEAgent, SWEConfig
+
+    async def run():
+        issue = args.issue
+        issue_path = Path(issue)
+        if issue_path.exists():
+            issue = issue_path.read_text(encoding="utf-8").strip()
+
+        model_backend = None
+        if args.model:
+            registry = ModelRegistry()
+            registry.profile.models = []  # skip config, use CLI-provided model
+            model_backend = registry.get_model(args.model)
+
+        cfg = SWEConfig(
+            model_name=args.model,
+            max_iterations=args.iterations,
+            test_command=args.test_cmd,
+            sandbox_enabled=args.sandbox,
+            verbose=args.verbose,
+        )
+
+        agent = SWEAgent(cfg, model_backend=model_backend)
+        result = await agent.run(issue, args.repo)
+
+        print()
+        sep = "=" * 60
+        print(sep)
+        print(f"  SWE Fix Result: {'✅ PASS' if result.success else '❌ FAIL'}")
+        print(f"  Iterations: {result.iterations}")
+        print(f"  Duration: {result.total_duration_ms:.0f}ms")
+        if result.error:
+            print(f"  Error: {result.error}")
+        print(sep)
+        print()
+
+        if result.patch.files:
+            print("[PATCH]")
+            print(result.patch.to_diff()[:2000])
+            print()
+
+        if args.verbose and result.context:
+            print("[CONTEXT]")
+            print(result.context.summarize()[:1000])
+
+    asyncio.run(run())
 
 
 def _run_distill(config_path: str = None, num_samples: int = 100,

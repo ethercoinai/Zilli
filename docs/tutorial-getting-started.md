@@ -92,7 +92,63 @@ zilli distill --samples 100 --checkpoint ./ckpt.json
 zilli distill --samples 50 --checkpoint ./ckpt.json  # resumes
 ```
 
+## 6. Run a SWE fix loop
+
+Zilli can autonomously reproduce, diagnose, fix, and verify bugs in a codebase — a SWE-bench-style agent loop.
+
+### Python API
+
+```python
+from zilli.models import ModelRegistry
+from zilli.swe import SWEAgent, SWEConfig
+
+# Use any registered model for diagnosis + fix generation
+registry = ModelRegistry()
+model = registry.get_model("executor")  # or "planner" for stronger reasoning
+
+cfg = SWEConfig(
+    max_iterations=3,
+    test_command="python -m pytest tests/ -x -q",
+    verbose=True,
+)
+
+agent = SWEAgent(cfg, model_backend=model)
+result = await agent.run("Fix the failing test in test_parser.py", "./my_repo")
+
+print(f"Success: {result.success}")
+print(f"Patch:\n{result.patch.to_diff()}")
+```
+
+### CLI one-liner
+
+```bash
+# Basic: fix a bug from description
+zilli swe --issue "修复 test_parser.py 中的解析错误" --repo ./my_repo
+
+# Load issue from file
+zilli swe --issue ./bug_report.txt --repo ./my_repo --iterations 5
+
+# Use planner model for stronger diagnosis + Docker sandbox isolation
+zilli swe --issue "API rate limiting not working" --model planner --sandbox --verbose
+```
+
+### How it works
+
+```
+Issue → [Reproduce] → [Explore] → [Diagnose (LLM)] → [Generate Fix] → [Verify] → Patch
+         ↓ failure                        ↑
+         └──── narrow scope, retry ───────┘
+```
+
+- **Reproduce**: Runs `pytest` (or your test command) to confirm failure
+- **Explore**: `grep` + `glob` to find relevant source files
+- **Diagnose**: Uses Zilli model backend to analyze root cause
+- **Fix**: Generates a minimal patch via LLM
+- **Verify**: Re-runs tests; on failure, narrows scope and retries (up to `max_iterations`)
+- **Sandbox**: Optional Docker isolation via `zilli.swe.sandbox.Sandbox`
+
 ## Next steps
 
-- Read `docs/reference-distillation.md` for the full API reference
+- Read `docs/reference-distillation.md` for the distillation API reference
+- See `docs/howto-common-tasks.md` for CLI usage patterns, including SWE
 - See `README.md` for the architecture overview

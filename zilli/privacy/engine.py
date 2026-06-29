@@ -87,6 +87,7 @@ class PrivacyEngine:
         if reid_assessment.risk in (ReIDRisk.HIGH, ReIDRisk.CRITICAL):
             warnings.append(reid_assessment.recommendation)
 
+        passed = True
         can_use_cloud = classification.can_use_cloud
         if require_cloud and not can_use_cloud:
             can_use_cloud = False
@@ -130,7 +131,8 @@ class PrivacyEngine:
         can_proceed_local = not require_cloud and consent_local_ok
         can_proceed_cloud = require_cloud and can_use_cloud and is_reid_safe
 
-        passed = can_proceed_local or can_proceed_cloud
+        if passed:
+            passed = can_proceed_local or can_proceed_cloud
 
         duration = (time.monotonic() - start) * 1000
 

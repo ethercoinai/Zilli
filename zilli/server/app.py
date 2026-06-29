@@ -38,11 +38,14 @@ from zilli.server.schemas import (
     RouteResponse,
     Usage,
 )
+from zilli.utils.crypto import hash_api_key, verify_api_key
 from zilli.version import version
 
 logger = logging.getLogger("zilli.server")
 
 _metrics: dict = {"requests_total": 0, "tokens_total": 0, "errors_total": 0}
+
+_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024  # 10MB
 
 @dataclass
 class RateLimiter:
@@ -106,7 +109,10 @@ class ZilliAppState:
 
         keys_env = os.environ.get("ZILLI_API_KEYS", "")
         if keys_env:
-            self.api_keys = set(k.strip() for k in keys_env.split(",") if k.strip())
+            self.api_keys = set(
+                hash_api_key(k.strip())
+                for k in keys_env.split(",") if k.strip()
+            )
 
     def verify_api_key(self, request: Request) -> str | None:
         if not self.api_keys:
@@ -115,9 +121,9 @@ class ZilliAppState:
         api_key = request.headers.get("X-API-Key", "")
         if auth.startswith("Bearer "):
             token = auth[7:]
-            if token in self.api_keys:
+            if any(verify_api_key(token, kh) for kh in self.api_keys):
                 return token
-        if api_key in self.api_keys:
+        if api_key and any(verify_api_key(api_key, kh) for kh in self.api_keys):
             return api_key
         client_ip = request.client.host if request.client else "unknown"
         logger.warning("Unauthorized API access attempt from %s", client_ip)
@@ -164,6 +170,17 @@ def create_app(config: Optional[ZilliConfig] = None) -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         _metrics["requests_total"] += 1
         return response
+
+    @app.middleware("http")
+    async def _body_size_middleware(request: Request, call_next):
+        content_length = request.headers.get("Content-Length")
+        if content_length and content_length.isdigit():
+            if int(content_length) > _MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "Request body too large"},
+                )
+        return await call_next(request)
 
     @app.middleware("http")
     async def _auth_middleware(request: Request, call_next):

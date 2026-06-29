@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any, Optional
 
@@ -186,3 +187,7 @@ def load_config(path: Optional[Path] = None) -> ZilliConfig:
             return ZilliConfig.from_yaml(candidate)
 
     return ZilliConfig()
+
+
+async def load_config_async(path: Optional[Path] = None) -> ZilliConfig:
+    return await asyncio.to_thread(load_config, path)

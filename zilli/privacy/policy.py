@@ -39,7 +39,7 @@ class DataGovernancePolicy:
         CloudProvider.OPENAI, CloudProvider.ANTHROPIC,
     ])
     sanitization: SanitizationRule = field(default_factory=SanitizationRule)
-    require_consent: bool = True
+    require_consent: bool = False
     audit_all_calls: bool = True
     retention_days: int = 90
     auto_sanitize: bool = True

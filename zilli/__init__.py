@@ -86,6 +86,17 @@ from zilli.security import (
     PIIDetector,
     Sanitizer,
 )
+from zilli.swe import (
+    CodeContext,
+    ExploreResult,
+    PatchFile,
+    Sandbox,
+    SandboxConfig,
+    SWEAgent,
+    SWEConfig,
+    SWEPatch,
+    SWEResult,
+)
 
 __all__ = [
     "BaseAction",
@@ -123,4 +134,8 @@ __all__ = [
     "PrivacyEngine", "PrivacyVerdict", "SanitizationMode",
     "PrivacyGatekeeper", "GatekeeperDecision", "ExecutionTarget",
     "HybridExecutor", "HybridResult",
+    "SWEAgent", "SWEConfig", "SWEResult",
+    "CodeContext", "ExploreResult",
+    "SWEPatch", "PatchFile",
+    "Sandbox", "SandboxConfig",
 ]

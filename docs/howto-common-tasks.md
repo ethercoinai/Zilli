@@ -80,3 +80,92 @@ print(compare(iter.results))
 - `kl_divergence` > 0.5 indicates student diverging from planner
 - `bc_loss` should dominate early training, `rl_loss` later
 - Check `distill_logs/` for per-cycle JSON dumps
+
+## Run the SWE bug fix loop
+
+The SWE agent autonomously reproduces, diagnoses, and fixes test failures.
+
+### CLI: basic usage
+
+```bash
+# Fix by issue description
+zilli swe --issue "ModuleNotFoundError when importing utils" --repo ./my_project
+
+# Fix from file (GitHub issue body, bug report, etc.)
+zilli swe --issue ./bug.md --repo ./my_project
+
+# Increase retries for hard bugs
+zilli swe --issue "随机内存越界" --repo ./cpp_project --iterations 5
+```
+
+### CLI: with model selection
+
+```bash
+# Use a specific model for diagnosis
+zilli swe --issue "Login test fails" --repo ./app --model planner
+
+# Verbose output (shows patch + context)
+zilli swe --issue "API timeout" --repo ./api --model executor --verbose
+```
+
+### CLI: with sandbox
+
+```bash
+# Run in Docker sandbox (requires Docker)
+zilli swe --issue "Fix CI test" --repo ./app --sandbox
+
+# Custom test command
+zilli swe --issue "Fix lint error" --repo ./lib --test-cmd "ruff check ."
+```
+
+### Python API: basic
+
+```python
+from zilli.swe import SWEAgent, SWEConfig
+from zilli.models import ModelRegistry
+
+registry = ModelRegistry()
+model = registry.get_model("executor")
+
+cfg = SWEConfig(max_iterations=3, verbose=True)
+agent = SWEAgent(cfg, model_backend=model)
+result = await agent.run("Fix the failing test", "./repo")
+
+if result.success:
+    print("✅ Fix verified by tests")
+    print(result.patch.to_diff())
+else:
+    print(f"❌ Failed after {result.iterations} iterations")
+    print(result.context.summarize())
+```
+
+### Python API: custom test command
+
+```python
+cfg = SWEConfig(
+    test_command="npm test",
+    test_timeout=300.0,
+    max_iterations=5,
+    target_files=["src/"],
+)
+agent = SWEAgent(cfg)
+```
+
+### Python API: iterate on results
+
+```python
+result = await agent.run("Bug description", "./repo")
+for cycle in (result.loop_result.cycles or []):
+    status = "✅" if cycle.verification and cycle.verification.passed else "❌"
+    print(f"  Cycle {cycle.id}: {status} ({cycle.duration_ms:.0f}ms)")
+    if cycle.error:
+        print(f"    Error: {cycle.error}")
+```
+
+### Interpret SWE output
+
+- `success`: tests passed after fix → patch is verified
+- `patch.to_diff()`: unified diff of changes made
+- `context.summarize()`: what files were explored, error analysis, fix proposal
+- `iterations`: number of fix attempts (1 = first try)
+- `loop_result.cycles`: detailed history of each attempt with verification results

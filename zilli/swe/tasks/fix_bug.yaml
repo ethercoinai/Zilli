@@ -1,0 +1,17 @@
+id: "swe-fix-bug"
+name: "Fix a bug from issue description"
+category: "swe"
+description: "Reproduce a test failure, diagnose the root cause, apply a minimal fix, and verify with tests."
+max_iterations: 3
+eval_criteria:
+  - "Tests pass that previously failed"
+  - "No regressions in other tests"
+  - "Patch is minimal (only changes necessary lines)"
+  - "Root cause is identified, not just symptoms"
+reward_rules:
+  - metric: "test_pass"
+    weight: 1.0
+  - metric: "patch_size"
+    weight: -0.1
+  - metric: "regression_free"
+    weight: 0.5

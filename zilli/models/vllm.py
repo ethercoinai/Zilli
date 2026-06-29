@@ -25,12 +25,14 @@ class VLLMBackend(ModelBackend):
         self._client: Optional["httpx.AsyncClient"] = None
 
     async def _ensure_client(self) -> "httpx.AsyncClient":
-        if self._client is None and HAS_HTTPX:
+        if self._client is None:
+            if not HAS_HTTPX:
+                raise RuntimeError("httpx is not installed")
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(300.0),
                 limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
             )
-        return self._client  # type: ignore
+        return self._client
 
     async def generate(
         self,
@@ -175,9 +177,6 @@ class VLLMBackend(ModelBackend):
         if not HAS_HTTPX:
             return False
         try:
-            client = self._get_client()
-            if client is None:
-                return False
             client = await self._ensure_client()
             resp = await client.get(self._models_url, timeout=httpx.Timeout(5.0))
             if resp.status_code != 200:

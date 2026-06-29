@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 import subprocess
 import time
 from typing import Any, Callable, Optional
@@ -21,8 +22,8 @@ class TestSuiteVerifier(Verifier):
     async def verify(self, input_data: Any, output: Any) -> VerificationResult:
         start = time.monotonic()
         try:
-            proc = await asyncio.create_subprocess_shell(
-                self._command,
+            proc = await asyncio.create_subprocess_exec(
+                *shlex.split(self._command),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self._cwd,
