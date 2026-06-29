@@ -15,7 +15,7 @@ try:
     HAS_DOCKER = subprocess.run(
         ["docker", "--version"], capture_output=True, text=True, timeout=10,
     ).returncode == 0
-except Exception:
+except OSError:
     HAS_DOCKER = False
 
 

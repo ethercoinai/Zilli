@@ -134,8 +134,12 @@ async def main(config_path: str = None, experiment_name: str = "zilli_default"):
     cfg_path = Path(config_path).resolve() if config_path else base / "configs" / "training_config.yaml"
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {cfg_path}")
-    with open(cfg_path, encoding="utf-8") as f:
-        raw_config = yaml.safe_load(f)
+    async def _load_config():
+        def _sync():
+            with open(cfg_path, encoding="utf-8") as f:
+                return yaml.safe_load(f)
+        return await asyncio.to_thread(_sync)
+    raw_config = await _load_config()
 
     training_config = raw_config.get("training", {})
     num_epochs = training_config.get("num_epochs", 100)

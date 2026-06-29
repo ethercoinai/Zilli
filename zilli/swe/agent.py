@@ -263,7 +263,7 @@ class SWEAgent:
                     str(Path(line).relative_to(repo))
                     for line in stdout.decode(errors="replace").splitlines() if line
                 )
-            except Exception:
+            except (OSError, asyncio.TimeoutError):
                 continue
         return sorted(results)[:20]
 
@@ -280,7 +280,7 @@ class SWEAgent:
     async def _read_file(self, path: Path) -> str:
         try:
             return await asyncio.to_thread(path.read_text, encoding="utf-8")
-        except Exception:
+        except (OSError, IOError):
             return ""
 
     async def _extract_targets(self, diagnosis: str, explored: list[str]) -> list[str]:

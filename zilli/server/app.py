@@ -507,7 +507,7 @@ async def _check_alive(registry, name: str) -> bool:
         return False
     try:
         return await backend.health_check()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 

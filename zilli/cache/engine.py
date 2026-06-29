@@ -78,9 +78,9 @@ class CacheEngine:
                             data = json.loads(dp.read_text())
                             entry = CacheEntry(**data)
                             self._memory[key] = entry
-                        except Exception:
+                        except (OSError, json.JSONDecodeError, ValueError):
                             pass
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
 
     def _save_index(self):
@@ -124,7 +124,7 @@ class CacheEngine:
                     self._trim_memory()
                     self._hits += 1
                     return entry
-                except Exception:
+                except (OSError, json.JSONDecodeError, ValueError):
                     pass
 
             self._misses += 1

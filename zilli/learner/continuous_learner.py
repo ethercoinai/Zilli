@@ -161,8 +161,10 @@ class ContinuousLearner:
         )
 
         sft_log = self.data_dir / "sft_events.jsonl"
-        with open(sft_log, "a") as f:
-            f.write(json.dumps(metrics) + "\n")
+        def _write_sft_log():
+            with open(sft_log, "a") as f:
+                f.write(json.dumps(metrics) + "\n")
+        await asyncio.to_thread(_write_sft_log)
 
         return metrics
 

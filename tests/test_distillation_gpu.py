@@ -171,7 +171,7 @@ class TestGPULossComputation:
         scheduler = DistillationScheduler()
         with patch("zilli.training.distillation.is_gpu_available", return_value=True), \
              patch.dict("sys.modules", {"torch": None}), \
-             patch("builtins.__import__", lambda name, *a, **kw: (_ for _ in ()).throw(ImportError("no torch")) if name == "torch" else __import__(name, *a, **kw)):
+             patch("builtins.__import__", lambda name, *a, **kw: (_ for _ in ()).throw(ImportError("no torch")) if name == "torch" else __import__(name, *a, **kw)):  # noqa
             result = scheduler.compute_loss_torch([_sample()])
         assert result is None
 
@@ -179,7 +179,7 @@ class TestGPULossComputation:
         scheduler = DistillationScheduler()
         with patch("zilli.training.distillation.is_gpu_available", return_value=True), \
              patch.dict("sys.modules", {"torch": None}), \
-             patch("builtins.__import__", lambda name, *a, **kw: (_ for _ in ()).throw(ImportError("no torch")) if name == "torch" else __import__(name, *a, **kw)):
+             patch("builtins.__import__", lambda name, *a, **kw: (_ for _ in ()).throw(ImportError("no torch")) if name == "torch" else __import__(name, *a, **kw)):  # noqa
             result = scheduler.compute_loss_torch([_sample()])
         assert result is None
 

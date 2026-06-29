@@ -1,7 +1,7 @@
 {
   "success_rate": 1.0,
   "avg_cost_usd": 0.0001,
-  "avg_latency_sec": 0.00012663567066192627,
+  "avg_latency_sec": 0.00010886132717132569,
   "avg_tokens": 100.0,
   "total_cost_usd": 1.0,
   "total_runs": 10000

@@ -104,7 +104,7 @@ class PolicyStore:
         self._path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
     def _load(self):
-        data = json.loads(self._path.read_text())
+        data = json.loads(self._path.read_text())  # noqa: SYNC101
         for tid, d in data.items():
             self._policies[tid] = DataGovernancePolicy(
                 tenant_id=d.get("tenant_id", tid),

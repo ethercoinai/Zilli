@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from dataclasses import dataclass
@@ -37,7 +38,7 @@ class ExecutorOnlyEvaluator:
                     inference_tokens=token_count,
                     latency_sec=time.time() - start,
                 ))
-            except Exception:
+            except Exception:  # noqa: BLE001
                 results.append(EvalResult(
                     task_name=task["name"],
                     success=False, cost_usd=0.0,
@@ -74,8 +75,12 @@ class ExecutorOnlyEvaluator:
             "total_cost_usd": total_cost,
             "total_runs": total,
         }
-        with open("executor_only_report.json", "w") as f:
-            json.dump(report, f, indent=2)
+        async def _write_report():
+            def _sync():
+                with open("executor_only_report.json", "w") as f:
+                    json.dump(report, f, indent=2)
+            await asyncio.to_thread(_sync)
+        await _write_report()
         return report
 
 

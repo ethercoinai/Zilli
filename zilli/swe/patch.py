@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import difflib
 import logging
 from dataclasses import dataclass, field
@@ -37,7 +38,7 @@ class SWEPatch:
         for pf in self.files:
             target = repo_root / pf.path
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(pf.new_content, encoding="utf-8")
+            await asyncio.to_thread(lambda: target.write_text(pf.new_content, encoding="utf-8"))
             written.append(target)
             logger.info("Applied patch to %s", target)
         return written
@@ -47,7 +48,7 @@ class SWEPatch:
         for pf in self.files:
             target = repo_root / pf.path
             if target.exists():
-                target.write_text(pf.old_content, encoding="utf-8")
+                await asyncio.to_thread(lambda: target.write_text(pf.old_content, encoding="utf-8"))
                 reverted.append(target)
                 logger.info("Reverted %s", target)
         return reverted

@@ -568,7 +568,7 @@ def _run_swe(args: argparse.Namespace):
         issue = args.issue
         issue_path = Path(issue)
         if issue_path.exists():
-            issue = issue_path.read_text(encoding="utf-8").strip()
+            issue = await asyncio.to_thread(lambda: issue_path.read_text(encoding="utf-8").strip())
 
         model_backend = None
         if args.model:

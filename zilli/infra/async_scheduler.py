@@ -122,7 +122,7 @@ class AsyncRolloutScheduler:
         for task in done:
             try:
                 results.append(task.result())
-            except Exception:
+            except Exception:  # noqa: BLE001
                 self._total_errors += 1
 
         for task in pending_set:

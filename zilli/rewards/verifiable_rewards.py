@@ -102,7 +102,7 @@ class VerifiableReward:
         try:
             _ = action.model_validate(action.model_dump())
             return True
-        except Exception:
+        except (ValueError, TypeError):
             return False
 
 
