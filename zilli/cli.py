@@ -30,6 +30,10 @@ def main():
     sub.add_parser("list-benchmark", help="列出基准评估任务")
     sub.add_parser("sandbox-test", help="测试沙箱环境")
 
+    run_parser = sub.add_parser("run", help="运行一个自然语言任务")
+    run_parser.add_argument("prompt", type=str, help="任务描述")
+    run_parser.add_argument("--iterations", type=int, default=3, help="最大重试次数")
+
     models_parser = sub.add_parser("models", help="本地模型管理")
     models_sub = models_parser.add_subparsers(dest="models_command")
     models_sub.add_parser("list", help="列出已注册模型")
@@ -121,6 +125,30 @@ def main():
 
     elif args.command == "sandbox-test":
         _run_sandbox_test()
+
+    elif args.command == "run":
+        import asyncio
+        from zilli.core.agent import Agent
+
+        async def _run():
+            registry = ModelRegistry(config=zilli_config) if zilli_config else None
+            agent = await Agent.from_registry(registry)
+            result = await agent.run(args.prompt)
+            sep = "=" * 50
+            print(sep)
+            print(f"  Task: {args.prompt}")
+            print(f"  Result: {'✅ PASS' if result.success else '❌ FAIL'}")
+            print(f"  Iterations: {result.iterations}")
+            print(f"  Duration: {result.duration_ms:.0f}ms")
+            print(sep)
+            if result.output:
+                print(result.output)
+            if result.error:
+                print(f"Error: {result.error}")
+            print()
+            print(f"--- {result.duration_ms:.0f}ms ---")
+
+        asyncio.run(_run())
 
     elif args.command == "evaluate":
         _run_evaluation(task_id=args.task_id, cost_aware=args.cost_aware, budget=args.budget, zilli_config=zilli_config)

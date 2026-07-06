@@ -7,6 +7,8 @@ from zilli.audit import (
     ComplianceReporter,
 )
 from zilli.cache import CacheConfig, CacheEngine, CacheEntry, CacheStats
+from zilli.core.agent import Agent, AgentResult
+from zilli.core.runner import TaskRunner, TaskStep, StepResult
 from zilli.configs import ZilliConfig, load_config
 from zilli.hybrid import (
     ExecutionTarget,
@@ -97,8 +99,19 @@ from zilli.swe import (
     SWEPatch,
     SWEResult,
 )
+from zilli.dag import DAGEdge, DAGNode, DAGExecutor, TaskDAG
+from zilli.dag.engine import DAGValidationResult, ExecutionResult, NodeStatus, TaskType
+from zilli.evaluation.meta_evaluator import EvaluationSample, MetaEvaluationResult, MetaEvaluator
+from zilli.adaptive.moo import CandidateSolution, MultiObjectiveOptimizer, OptimizationResult, ParetoFront
+from zilli.fusion import FusionResult, ResultFusion
+from zilli.fusion.engine import FusionStrategy, ModelOutput
+from zilli.privacy.sandbox import PrivacyBudget, PrivacySandbox, SandboxExecution, SandboxStatus
+from zilli.pipeline import EvolutionPipeline
+from zilli.pipeline.evolution import EvolutionEvent, PipelineConfig, PipelineStage
 
 __all__ = [
+    "Agent", "AgentResult",
+    "TaskRunner", "TaskStep", "StepResult",
     "BaseAction",
     "MemoryWriteAction",
     "MemoryReadAction",
@@ -138,4 +151,11 @@ __all__ = [
     "CodeContext", "ExploreResult",
     "SWEPatch", "PatchFile",
     "Sandbox", "SandboxConfig",
+    "DAGNode", "DAGEdge", "TaskDAG", "DAGExecutor",
+    "NodeStatus", "TaskType", "DAGValidationResult", "ExecutionResult",
+    "MetaEvaluator", "EvaluationSample", "MetaEvaluationResult",
+    "MultiObjectiveOptimizer", "CandidateSolution", "ParetoFront", "OptimizationResult",
+    "ResultFusion", "FusionResult", "FusionStrategy", "ModelOutput",
+    "PrivacySandbox", "SandboxConfig", "SandboxStatus", "PrivacyBudget", "SandboxExecution",
+    "EvolutionPipeline", "PipelineConfig", "PipelineStage", "EvolutionEvent",
 ]
