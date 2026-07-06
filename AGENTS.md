@@ -29,7 +29,7 @@ Zilli（原 Hermes-NG）是一个面向 AI 自主开发的下一代 Agent 工具
 - Python 包：`hermes_ng/` → `zilli/`
 - CLI 命令：`hermes-ng` → `zilli`，`hermes-evolve` → `zilli-evolve`
 - 测试文件：`test_hermes_ng.py` → `test_zilli.py`
-- 远程仓库：`github.com/iclawos/Hermes-NG.git` → `github.com/iclawos/Zilli.git`
+- 远程仓库：`github.com/iclawos/Hermes-NG.git` → `github.com/ethercoinai/Zilli.git`
 
 ### 3. 文档产出
 

@@ -49,8 +49,8 @@ dev = [
 ]
 
 [project.urls]
-homepage = "https://github.com/iclawos/Zilli"
-repository = "https://github.com/iclawos/Zilli.git"
+homepage = "https://github.com/ethercoinai/Zilli"
+repository = "https://github.com/ethercoinai/Zilli.git"
 
 [project.scripts]
 zilli = "zilli.cli:main"
