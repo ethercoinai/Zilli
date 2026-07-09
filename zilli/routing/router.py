@@ -9,6 +9,7 @@ from zilli.models.config import ModelRole
 from zilli.models.registry import ModelRegistry
 from zilli.routing.classifier import RouteClassifier, RouteDecision, RouteType
 from zilli.security.sanitizer import InputSanitizer, safe_format
+from zilli.envs.planner_budget import PlannerBudget
 
 if TYPE_CHECKING:
     from zilli.cache import CacheEngine
@@ -97,11 +98,13 @@ class LocalHybridRouter:
         classifier: Optional[RouteClassifier] = None,
         config: Optional["ZilliConfig"] = None,
         cache: Optional["CacheEngine"] = None,
+        planner_budget: Optional[PlannerBudget] = None,
     ):
         self.registry = registry
         self.config = config
         self.cache = cache
         self.sanitizer = InputSanitizer()
+        self.planner_budget = planner_budget or PlannerBudget()
 
         if classifier is not None:
             self.classifier = classifier
@@ -229,8 +232,29 @@ class LocalHybridRouter:
                     error=result.error,
                 )
 
+            if not self.planner_budget.may_use_planner():
+                logger.info("Planner budget exceeded — falling back to direct execution")
+                prompt = self._enrich_prompt(
+                    safe_format(_EXECUTE_PROMPT, plan="Answer the request directly.", request=request),
+                    industry,
+                )
+                fast_result = await self._with_cache(ModelRole.EXECUTOR, prompt)
+                self.planner_budget.record_call("executor")
+                duration = (time.monotonic() - start) * 1000
+                return RouteResult(
+                    final_text=fast_result.text,
+                    route_type=RouteType.FAST_LANE,
+                    decision=decision,
+                    executor_result=fast_result.text,
+                    executor_tokens=fast_result.tokens_out,
+                    total_duration_ms=duration,
+                    error=fast_result.error,
+                )
+
             planner_output = await self.plan(request, industry)
+            self.planner_budget.record_call("planner")
             executor_output = await self.execute(planner_output, request, industry)
+            self.planner_budget.record_call("executor")
             reviewer_output = await self.review(planner_output, executor_output, request, industry)
 
             duration = (time.monotonic() - start) * 1000

@@ -1,6 +1,30 @@
-version: "3.9"
-
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: zilli-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - redis_data:/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: zilli-chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    volumes:
+      - chroma_data:/chroma/chroma
+
   ollama:
     image: ollama/ollama:latest
     container_name: zilli-ollama
@@ -22,17 +46,42 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8900:8900"
     volumes:
       - zilli_data:/app/.zilli_cache
       - zilli_audit:/app/audit_logs
-      - ./zilli.yaml:/app/zilli.yaml:ro
     environment:
-      - ZILLI_CONFIG_PATH=/app/zilli.yaml
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
     command: ["serve", "--host", "0.0.0.0", "--port", "8900"]
+    develop:
+      watch:
+        - path: ./zilli
+          action: sync
+
+  celery_worker:
+    build: .
+    container_name: zilli-celery
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - zilli_data:/app/.zilli_cache
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    command: ["celery", "-A", "zilli.workflow.celery_app", "worker",
+              "--loglevel=info", "--concurrency=4"]
 
 volumes:
+  redis_data:
+  chroma_data:
   ollama_data:
   zilli_data:
   zilli_audit:

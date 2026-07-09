@@ -108,6 +108,7 @@ from zilli.fusion.engine import FusionStrategy, ModelOutput
 from zilli.privacy.sandbox import PrivacyBudget, PrivacySandbox, SandboxExecution, SandboxStatus
 from zilli.pipeline import EvolutionPipeline
 from zilli.pipeline.evolution import EvolutionEvent, PipelineConfig, PipelineStage
+from zilli.workflow import CeleryDAGExecutor
 
 __all__ = [
     "Agent", "AgentResult",
@@ -158,4 +159,5 @@ __all__ = [
     "ResultFusion", "FusionResult", "FusionStrategy", "ModelOutput",
     "PrivacySandbox", "SandboxConfig", "SandboxStatus", "PrivacyBudget", "SandboxExecution",
     "EvolutionPipeline", "PipelineConfig", "PipelineStage", "EvolutionEvent",
+    "CeleryDAGExecutor",
 ]

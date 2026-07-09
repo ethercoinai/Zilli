@@ -423,7 +423,9 @@ Zilli 不仅是一套系统架构，更是一种**让 AI 自主开发 AI 工具*
 
 **文档版本**：v2.0（合并版）  
 **最后更新**：2026-06-10  
-**维护者**：Zilli 核心团队
+**维护者**：Ethercoin AI Team  
+**仓库**：[github.com/ethercoinai/Zilli](https://github.com/ethercoinai/Zilli)  
+**官网**：[ethercoin.com](https://ethercoin.com)
 
 ## 快速链接
 

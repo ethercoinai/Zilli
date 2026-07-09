@@ -63,11 +63,14 @@ class CycleMemory:
             return 1.0
         return sum(1 for e in recent if e.passed) / len(recent)
 
-    def summary(self) -> str:
+    def summary(self, exclude_failed: bool = False) -> str:
         total = len(self._entries)
         passes = sum(1 for e in self._entries if e.passed)
+        failures = total - passes
+        recent_pass_rate = self.success_rate(n=20)
         return (
             f"Memory: {total} cycles, {passes} passed ({'%.0f' % (passes/total*100 if total else 100)}%), "
+            f"{failures} failed, recent_pass_rate={'%.0f' % (recent_pass_rate*100)}%, "
             f"last: {self._entries[-1].cycle_id if self._entries else 'none'}"
         )
 

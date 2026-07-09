@@ -5,6 +5,7 @@ import logging
 import shlex
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from zilli.loops.base import VerificationResult, Verifier
@@ -112,4 +113,43 @@ class CompositeVerifier(Verifier):
             evidence=evidence,
             details=details,
             confidence=min(r.confidence for r in results) if results else 0.0,
+        )
+
+
+class SkillVerifier(Verifier):
+    """Verifier that loads skill instructions and checks output against them.
+
+    The Karpathy Loop principle: reusable instructions (like program.md)
+    that the loop reads every cycle so it doesn't re-derive project context.
+    """
+
+    def __init__(self, skill_path: str | Path, model: ModelBackend,
+                 name: str = "skill", strictness: float = 0.7):
+        self._skill_path = Path(skill_path)
+        self._model = model
+        self._name = name
+        self._strictness = strictness
+
+    async def verify(self, input_data: Any, output: Any) -> VerificationResult:
+        if not self._skill_path.exists():
+            return VerificationResult(passed=True, evidence=f"Skill file {self._skill_path} not found")
+
+        skill = self._skill_path.read_text(encoding="utf-8")
+        prompt = (
+            f"You are a strict verifier enforcing the following skill rules:\n\n"
+            f"{skill}\n\n"
+            f"---\n"
+            f"Determine if the OUTPUT satisfies the skill requirements above.\n\n"
+            f"Input: {input_data}\n"
+            f"Output: {output}\n\n"
+            f"Reply with PASS or FAIL and your reasoning."
+        )
+        result = await self._model.generate(prompt, max_tokens=512)
+        text = (result.text or "").strip().upper()
+        passed = text.startswith("PASS")
+        return VerificationResult(
+            passed=passed,
+            evidence=text[:500],
+            details=result.text or "",
+            confidence=0.9 if passed else 0.3,
         )
