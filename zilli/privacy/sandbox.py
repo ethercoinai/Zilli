@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Coroutine, Optional
 
-from zilli.privacy.classifier import DataClassifier, DataClass, ClassificationResult
+from zilli.privacy.classifier import ClassificationResult, DataClass, DataClassifier
 
 logger = logging.getLogger("zilli.privacy.sandbox")
 

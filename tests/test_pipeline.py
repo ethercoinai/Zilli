@@ -1,8 +1,8 @@
-import pytest
-from zilli.pipeline.evolution import (
-    EvolutionPipeline, PipelineConfig, PipelineStage, EvolutionEvent,
-)
 from zilli.evaluation.meta_evaluator import EvaluationSample
+from zilli.pipeline.evolution import (
+    EvolutionPipeline,
+    PipelineStage,
+)
 
 
 class TestEvolutionPipeline:

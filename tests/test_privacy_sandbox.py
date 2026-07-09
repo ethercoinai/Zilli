@@ -1,8 +1,10 @@
-import pytest
-from zilli.privacy.sandbox import (
-    PrivacySandbox, SandboxConfig, SandboxStatus, PrivacyBudget, SandboxExecution,
-)
 from zilli.privacy.classifier import DataClass
+from zilli.privacy.sandbox import (
+    PrivacyBudget,
+    PrivacySandbox,
+    SandboxConfig,
+    SandboxStatus,
+)
 
 
 class TestPrivacyBudget:

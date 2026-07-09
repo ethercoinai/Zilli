@@ -1,6 +1,4 @@
-import math
-import pytest
-from zilli.evaluation.meta_evaluator import MetaEvaluator, EvaluationSample, MetaEvaluationResult
+from zilli.evaluation.meta_evaluator import EvaluationSample, MetaEvaluator
 
 
 class TestMetaEvaluator:

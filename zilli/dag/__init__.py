@@ -1,3 +1,3 @@
-from zilli.dag.engine import DAGNode, DAGEdge, TaskDAG, DAGExecutor
+from zilli.dag.engine import DAGEdge, DAGExecutor, DAGNode, TaskDAG
 
 __all__ = ["DAGNode", "DAGEdge", "TaskDAG", "DAGExecutor"]

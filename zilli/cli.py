@@ -128,7 +128,9 @@ def main():
 
     elif args.command == "run":
         import asyncio
+
         from zilli.core.agent import Agent
+        from zilli.models.registry import ModelRegistry
 
         async def _run():
             registry = ModelRegistry(config=zilli_config) if zilli_config else None

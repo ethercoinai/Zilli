@@ -5,12 +5,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
-from zilli.core.runner import TaskRunner, TaskStep
-from zilli.evaluation.meta_evaluator import MetaEvaluator, EvaluationSample
-from zilli.fusion.engine import ResultFusion, FusionStrategy
-from zilli.adaptive.moo import MultiObjectiveOptimizer, CandidateSolution
-from zilli.models.registry import ModelRegistry
+from zilli.adaptive.moo import CandidateSolution, MultiObjectiveOptimizer
+from zilli.evaluation.meta_evaluator import EvaluationSample, MetaEvaluator
+from zilli.fusion.engine import FusionStrategy, ResultFusion
 from zilli.models.config import ModelRole
+from zilli.models.registry import ModelRegistry
 
 logger = logging.getLogger("zilli.pipeline.evolution")
 
@@ -144,7 +143,6 @@ class EvolutionPipeline:
 
     def _execute_evolution(self) -> EvolutionEvent:
         import asyncio
-        import time
 
         if self._registry:
             model = asyncio.run(self._registry.get_model_for_role(ModelRole.EXECUTOR))
@@ -156,7 +154,7 @@ class EvolutionPipeline:
                 suggestion = gen.text or ""
                 return EvolutionEvent(
                     stage=PipelineStage.EVOLVE, success=True,
-                    message=f"Model suggested improvement",
+                    message="Model suggested improvement",
                     metrics={"suggestion_len": len(suggestion), "source": "model_api"},
                 )
 

@@ -5,9 +5,9 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
-from zilli.dag.engine import DAGNode, DAGExecutor, NodeStatus, TaskDAG
+from zilli.dag.engine import DAGExecutor, DAGNode, NodeStatus, TaskDAG
 
 logger = logging.getLogger("zilli.workflow.celery_executor")
 

@@ -14,6 +14,9 @@ from zilli.loops.base import (
     VerificationResult,
     Verifier,
 )
+from zilli.loops.context_curator import ContextCurator, Trajectory
+from zilli.loops.failure_analyzer import WeaknessMiner
+from zilli.loops.harness_orchestrator import HarnessOrchestrator
 from zilli.loops.memory import CycleMemory
 
 logger = logging.getLogger("zilli.loops.runner")
@@ -33,6 +36,8 @@ class LoopRunner(Generic[T]):
         correction_fn: Optional[Callable[[T, Any, str], T]] = None,
         name: str = "",
         max_context_cycles: int = 10,
+        context_curator: Optional[ContextCurator] = None,
+        weakness_miner: Optional[WeaknessMiner] = None,
     ):
         self._process = process_fn
         self._verifier = verifier
@@ -44,6 +49,8 @@ class LoopRunner(Generic[T]):
         self._name = name or "loop"
         self._cycle_count = 0
         self._max_context_cycles = max_context_cycles
+        self._context_curator = context_curator
+        self._weakness_miner = weakness_miner
 
     async def run(self, input_data: T) -> LoopResult[T]:
         start = time.monotonic()
@@ -76,6 +83,7 @@ class LoopRunner(Generic[T]):
                     cycles.append(cycle)
                     self._memory.add_from_cycle(cycle)
                     self._accumulate_cost(total_cost, cycle)
+                    self._curate_trajectory(cycle, "success")
                     logger.info(
                         "%s cycle %d passed (%.0fms)",
                         self._name, cycle.id, cycle.duration_ms,
@@ -103,6 +111,7 @@ class LoopRunner(Generic[T]):
                 cycle.error = str(e)
                 cycle.verification = VerificationResult(passed=False, evidence=str(e))
                 logger.error("%s cycle %d error: %s", self._name, cycle.id, e)
+                self._curate_trajectory(cycle, "failure")
 
             cycle.duration_ms = (time.monotonic() - cycle_start) * 1000
             cycles.append(cycle)
@@ -151,12 +160,47 @@ class LoopRunner(Generic[T]):
             else:
                 consecutive_failures += 1
                 logger.warning("%s cycle failed (%dx consecutive)", self._name, consecutive_failures)
+                self._mine_failures(result)
             if consecutive_failures >= self._max_retries + 1:
                 logger.error("%s too many consecutive failures, stopping", self._name)
+                if self._weakness_miner:
+                    summary = self._weakness_miner.summary()
+                    if summary["clusters"]:
+                        logger.error("Failure clusters: %s", summary["clusters"])
                 break
             if not await self._trigger.wait():
                 logger.info("%s trigger stopped", self._name)
                 break
+
+    def _mine_failures(self, result: LoopResult) -> None:
+        if not self._weakness_miner:
+            return
+        traces = []
+        for cycle in result.cycles:
+            if cycle.verification and not cycle.verification.passed:
+                traces.append({
+                    "task_id": str(getattr(cycle.input_data, "task_id", cycle.id)),
+                    "verifier_outcome": (cycle.verification.evidence or "failed")[:80],
+                    "causal_status": cycle.error or "verification_failed",
+                    "mechanism": "loop_runner",
+                    "trace": (cycle.verification.evidence or "")[:500],
+                    "timestamp": time.time(),
+                })
+        if traces:
+            self._weakness_miner.ingest(traces)
+
+    def _curate_trajectory(self, cycle: LoopCycle, outcome: str) -> None:
+        if not self._context_curator:
+            return
+        trajectory = Trajectory(
+            task_id=str(getattr(cycle.input_data, "task_id", cycle.id)),
+            actions=cycle.metadata.get("actions", []),
+            outcome=outcome,
+            verifier_evidence=cycle.verification.evidence if cycle.verification else "",
+            duration_ms=cycle.duration_ms or 0.0,
+        )
+        if outcome == "failure" and self._cycle_count % 3 == 0:
+            self._context_curator.reflect([trajectory])
 
     @property
     def cycle_count(self) -> int:
@@ -168,17 +212,20 @@ class LoopRunner(Generic[T]):
 
 
 class MetaLoopRunner:
-    """Bilevel meta-loop that wraps a LoopRunner and tunes its parameters.
+    """Bilevel meta-loop that harness-evolves a wrapped LoopRunner.
 
-    The outer loop watches the inner loop's performance and adjusts:
-    - verifier strictness
-    - retry strategy
-    - context compaction frequency
-    - cost budget allocation
+    Two modes:
+      PARAM_TUNE (default) — adjusts numeric parameters like the original
+      HARNESS_EVOLVE — runs Self-Harness: weakness mining → code-level
+                       proposals → held-in/held-out validation
 
-    Based on the Bilevel Autoresearch paper (arXiv:2603.23420):
-    if the loop can meta-loop itself, it can meta-loop anything.
+    In HARNESS_EVOLVE mode, failed cycles produce execution traces that
+    are fed to the HarnessOrchestrator, which proposes edits to the
+    editable harness surfaces.
     """
+
+    MODE_PARAM_TUNE = "param_tune"
+    MODE_HARNESS_EVOLVE = "harness_evolve"
 
     def __init__(
         self,
@@ -186,29 +233,67 @@ class MetaLoopRunner:
         meta_verifier: Optional[Verifier] = None,
         max_meta_iterations: int = 5,
         improvement_threshold: float = 0.05,
+        mode: str = MODE_HARNESS_EVOLVE,
+        harness_orchestrator: Optional[HarnessOrchestrator] = None,
     ):
         self._inner = inner_runner
         self._meta_verifier = meta_verifier
         self._max_meta = max_meta_iterations
         self._threshold = improvement_threshold
+        self._mode = mode
+        self._orchestrator = harness_orchestrator
         self._history: list[LoopResult] = []
         self._tuning_log: list[dict] = []
+        self._evolved_versions: list[str] = []
+        self._traces: list[dict] = []
 
     async def run(self, input_data: Any) -> LoopResult:
         best_result: Optional[LoopResult] = None
         params = self._default_params()
 
         for iteration in range(self._max_meta):
-            logger.info("MetaLoop iteration %d/%d (params=%s)", iteration + 1, self._max_meta, params)
+            logger.info("MetaLoop iteration %d/%d (mode=%s)", iteration + 1, self._max_meta, self._mode)
             result = await self._inner.run(input_data)
             self._history.append(result)
-            self._tuning_log.append({"iteration": iteration, "params": params, "result": result.success})
+            self._tuning_log.append({
+                "iteration": iteration,
+                "mode": self._mode,
+                "params": params,
+                "result": result.success,
+            })
 
+            # Track best
             if best_result is None or (result.success and not best_result.success):
                 best_result = result
             elif result.success and best_result.success and result.total_retries < best_result.total_retries:
                 best_result = result
 
+            # Collect traces from failed cycles for harness evolution
+            for cycle in result.cycles:
+                if cycle.verification and not cycle.verification.passed:
+                    self._traces.append({
+                        "task_id": str(getattr(cycle.input_data, "task_id", cycle.id)),
+                        "verifier_outcome": cycle.verification.evidence[:80] if cycle.verification.evidence else "failed",
+                        "causal_status": cycle.error or "verification_failed",
+                        "mechanism": "loop_runner",
+                        "trace": cycle.verification.evidence[:500] if cycle.verification.evidence else "",
+                        "timestamp": time.time(),
+                        "metadata": {
+                            "cycle_id": cycle.id,
+                            "duration_ms": cycle.duration_ms,
+                        },
+                    })
+
+            # Harness evolution stage
+            if self._mode == self.MODE_HARNESS_EVOLVE and self._orchestrator:
+                candidate = await self._orchestrator.run_cycle(self._traces)
+                if candidate and candidate.accepted:
+                    self._evolved_versions.append(candidate.version)
+                    logger.info("Harness evolved to %s", candidate.version)
+                    # Reset trace buffer after accepted evolution
+                    self._traces = []
+
+            # Parameter tuning always runs
             if result.success:
                 pass_rate = self._inner.memory.success_rate(n=20)
                 if pass_rate >= 0.9:
@@ -222,26 +307,17 @@ class MetaLoopRunner:
 
     def _default_params(self) -> dict:
         return {
-            "strictness": 0.7,
             "max_retries": self._inner._max_retries,
-            "context_compact": True,
-            "cost_budget": 0.0,
         }
 
     def _tune(self, params: dict, result: LoopResult) -> dict:
         p = dict(params)
-        recent = [r for r in self._history[-5:] if r.success]
         fail_rate = 1.0 - self._inner.memory.success_rate(n=10)
 
         if fail_rate > 0.5:
             p["max_retries"] = min(p.get("max_retries", 3) + 1, 10)
         elif fail_rate < 0.2 and p.get("max_retries", 3) > 1:
             p["max_retries"] = max(p["max_retries"] - 1, 1)
-
-        if result.success and result.total_retries == 0:
-            p["strictness"] = min(p.get("strictness", 0.7) + 0.05, 1.0)
-        elif not result.success:
-            p["strictness"] = max(p.get("strictness", 0.7) - 0.1, 0.3)
 
         return p
 
@@ -251,3 +327,11 @@ class MetaLoopRunner:
     @property
     def tuning_log(self) -> list[dict]:
         return self._tuning_log
+
+    @property
+    def evolved_versions(self) -> list[str]:
+        return self._evolved_versions
+
+    @property
+    def mode(self) -> str:
+        return self._mode

@@ -5,7 +5,6 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("zilli.routing.frequency_controller")
 

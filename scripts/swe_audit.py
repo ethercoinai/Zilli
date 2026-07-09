@@ -10,10 +10,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from zilli.swe.context import CodeContext
 
 
 @dataclass
@@ -175,7 +173,6 @@ async def audit_project(path: Path) -> ProjectAudit:
 
     # Security checks
     for severity, rule, include, pattern in CHECKS["security"]:
-        ext_map = {"*.py *.ts *.js *.rs": ["*.py", "*.ts", "*.js", "*.rs", "*.tsx", "*.jsx", "*.rs", "*.md"]}
         if include == "*.py *.ts *.js *.rs":
             inc = "*.py" if lang == "python" else ("*.ts" if lang == "typescript" else ("*.js" if lang == "javascript" else ("*.rs" if lang == "rust" else "*.py")))
         else:
@@ -266,8 +263,8 @@ PROJECTS = [
 async def main():
     results: list[ProjectAudit] = []
     print(f"\n{'='*70}")
-    print(f"  Zilli SWE Agent — 全项目批量审计")
-    print(f"  审计模式: 真实代码问题扫描 (排除样式/TODO 噪音)")
+    print("  Zilli SWE Agent — 全项目批量审计")
+    print("  审计模式: 真实代码问题扫描 (排除样式/TODO 噪音)")
     print(f"  项目数: {len(PROJECTS)}")
     print(f"{'='*70}\n")
 
@@ -282,16 +279,20 @@ async def main():
         results.append(audit)
         s = audit.summary
         parts = []
-        if s["critical"]: parts.append(f"{s['critical']}C")
-        if s["high"]: parts.append(f"{s['high']}H")
-        if s["medium"]: parts.append(f"{s['medium']}M")
-        if s["low"]: parts.append(f"{s['low']}L")
+        if s["critical"]:
+            parts.append(f"{s['critical']}C")
+        if s["high"]:
+            parts.append(f"{s['high']}H")
+        if s["medium"]:
+            parts.append(f"{s['medium']}M")
+        if s["low"]:
+            parts.append(f"{s['low']}L")
         status = "  ".join(parts) if parts else "✅ clean"
         print(f"{audit.duration_ms:7.0f}ms  {status}")
 
     # ── Summary table ──
     print(f"\n{'='*70}")
-    print(f"  审计汇总 (按严重度排序)")
+    print("  审计汇总 (按严重度排序)")
     print(f"{'='*70}")
     header = f"  {'项目':30s} {'语言':10s} {'文件':>5s}  C   H   M   L"
     print(header)
@@ -344,7 +345,7 @@ async def main():
 
     # ── Action plan (worst offenders) ──
     print(f"\n{'='*70}")
-    print(f"  需立即修复的项目")
+    print("  需立即修复的项目")
     print(f"{'='*70}")
     bad = [r for r in results if r.summary["critical"] > 0 or r.summary["high"] > 0]
     for r in sorted(bad, key=lambda x: -x.summary["high"]):

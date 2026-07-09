@@ -1,5 +1,4 @@
-import pytest
-from zilli.fusion.engine import ResultFusion, ModelOutput, FusionStrategy, FusionResult
+from zilli.fusion.engine import FusionStrategy, ModelOutput, ResultFusion
 
 
 class TestResultFusion:

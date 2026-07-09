@@ -17,9 +17,8 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger("zilli.loops.context_curator")
 

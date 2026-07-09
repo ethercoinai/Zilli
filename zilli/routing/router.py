@@ -4,12 +4,12 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+from zilli.envs.planner_budget import PlannerBudget
 from zilli.models.base import GenerationResult
 from zilli.models.config import ModelRole
 from zilli.models.registry import ModelRegistry
 from zilli.routing.classifier import RouteClassifier, RouteDecision, RouteType
 from zilli.security.sanitizer import InputSanitizer, safe_format
-from zilli.envs.planner_budget import PlannerBudget
 
 if TYPE_CHECKING:
     from zilli.cache import CacheEngine

@@ -1,7 +1,8 @@
-import pytest
 import numpy as np
+
 from zilli.adaptive.moo import (
-    CandidateSolution, ParetoFront, OptimizationResult, MultiObjectiveOptimizer,
+    CandidateSolution,
+    MultiObjectiveOptimizer,
 )
 
 

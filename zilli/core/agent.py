@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from zilli.models.base import GenerationResult, ModelBackend
+from zilli.models.base import ModelBackend
 from zilli.models.config import ModelRole
 from zilli.models.registry import ModelRegistry
 

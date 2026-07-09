@@ -37,7 +37,6 @@ class TestAgent:
 
     def test_run_failure_then_retry(self):
         import asyncio
-        agent = Agent()
 
         class FailOnceAgent(Agent):
             def __init__(self):

@@ -6,7 +6,7 @@ from zilli.loops.base import (
     VerificationResult,
     Verifier,
 )
-from zilli.loops.context_curator import ContextCurator, ContextBullet, Trajectory
+from zilli.loops.context_curator import ContextBullet, ContextCurator, Trajectory
 from zilli.loops.failure_analyzer import FailureCluster, FailureRecord, WeaknessMiner
 from zilli.loops.harness_orchestrator import HarnessCandidate, HarnessEdit, HarnessOrchestrator
 from zilli.loops.memory import CycleMemory, MemoryEntry
