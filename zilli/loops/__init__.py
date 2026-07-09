@@ -6,6 +6,9 @@ from zilli.loops.base import (
     VerificationResult,
     Verifier,
 )
+from zilli.loops.context_curator import ContextCurator, ContextBullet, Trajectory
+from zilli.loops.failure_analyzer import FailureCluster, FailureRecord, WeaknessMiner
+from zilli.loops.harness_orchestrator import HarnessCandidate, HarnessEdit, HarnessOrchestrator
 from zilli.loops.memory import CycleMemory, MemoryEntry
 from zilli.loops.runner import LoopRunner
 from zilli.loops.trigger import DynamicIntervalTrigger, EventTrigger, FixedIntervalTrigger
@@ -33,4 +36,13 @@ __all__ = [
     "CompositeVerifier",
     "CycleMemory",
     "MemoryEntry",
+    "HarnessOrchestrator",
+    "HarnessCandidate",
+    "HarnessEdit",
+    "WeaknessMiner",
+    "FailureCluster",
+    "FailureRecord",
+    "ContextCurator",
+    "ContextBullet",
+    "Trajectory",
 ]
